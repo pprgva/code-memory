@@ -56,6 +56,16 @@ func InstallDeps(venvDir string) error {
 // DefaultModelName est le modèle HuggingFace téléchargé par défaut.
 const DefaultModelName = "intfloat/multilingual-e5-large"
 
+// DefaultModelDir retourne le chemin global du modèle : ~/.local/share/grepai/models/<nom>
+func DefaultModelDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	// Nom du dossier = partie après le "/" du repo HuggingFace
+	return filepath.Join(home, ".local", "share", "grepai", "models", "multilingual-e5-large")
+}
+
 // ModelExists vérifie si le modèle est déjà téléchargé.
 func ModelExists(modelPath string) bool {
 	_, err := os.Stat(filepath.Join(modelPath, "config.json"))

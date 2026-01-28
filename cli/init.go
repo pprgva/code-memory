@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -140,18 +139,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Download model if no path was provided
 	if cfg.Embedder.ModelPath == "" {
-		defaultModelDir := filepath.Join(config.GetConfigDir(cwd), "model")
-		if embedder.ModelExists(defaultModelDir) {
-			fmt.Printf("Model already downloaded at %s\n", defaultModelDir)
+		modelDir := embedder.DefaultModelDir()
+		if embedder.ModelExists(modelDir) {
+			fmt.Printf("Model already available at %s\n", modelDir)
 		} else {
 			fmt.Printf("\nDownloading model %s...\n", embedder.DefaultModelName)
 			fmt.Println("(this may take a few minutes on first run)")
-			if err := embedder.DownloadModel(venvDir, defaultModelDir, embedder.DefaultModelName); err != nil {
+			if err := embedder.DownloadModel(venvDir, modelDir, embedder.DefaultModelName); err != nil {
 				return fmt.Errorf("failed to download model: %w", err)
 			}
 			fmt.Println("Model downloaded successfully.")
 		}
-		cfg.Embedder.ModelPath = defaultModelDir
+		cfg.Embedder.ModelPath = modelDir
 		if err := cfg.Save(cwd); err != nil {
 			return fmt.Errorf("failed to update configuration with model path: %w", err)
 		}

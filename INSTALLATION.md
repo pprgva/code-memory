@@ -49,10 +49,7 @@ grepai --help
 ## 2. Prérequis
 
 - **Python 3** installé sur la machine (pour le worker d'embeddings)
-- **Un modèle E5** téléchargé localement, par exemple :
-  ```
-  /Users/ppr/Documents/development/code-memory/llm-server-embedding/model/multilingual-e5-large
-  ```
+- Le modèle E5 est téléchargé **automatiquement** au premier `grepai init`
 
 ---
 
@@ -62,16 +59,23 @@ Va dans le dossier de ton projet et lance :
 
 ```bash
 cd /chemin/vers/ton-projet
-grepai init --model-path /chemin/vers/modele/e5 --yes
+grepai init --yes
 ```
 
 Ce que ça fait :
 - Crée le dossier `.grepai/` avec le fichier `config.yaml`
 - Crée un environnement Python virtuel dans `.grepai/venv/`
 - Installe automatiquement `torch` et `transformers` dans le venv
+- Télécharge le modèle `intfloat/multilingual-e5-large` dans `~/.local/share/grepai/models/` (une seule fois, partagé entre tous les projets)
 - Ajoute `.grepai/` au `.gitignore` si présent
 
-Le `--yes` évite les questions interactives. Sans ce flag, l'outil te demande le chemin du modèle et le backend de stockage.
+Le `--yes` évite les questions interactives. Sans ce flag, l'outil te demande le backend de stockage.
+
+Si tu as déjà un modèle E5 sur ta machine, tu peux le spécifier :
+
+```bash
+grepai init --model-path /chemin/vers/mon-modele --yes
+```
 
 ### Options de stockage
 
