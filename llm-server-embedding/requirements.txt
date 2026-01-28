@@ -1,0 +1,26 @@
+# MLX Multilingual-E5-Large API Server - Dependencies
+
+# Core MLX & Server
+mlx-llm-server>=0.1.9
+mlx>=0.29.0
+
+# Web Framework
+flask>=3.0
+flask-cors>=4.0
+
+# Configuration & Validation
+pydantic>=2.0
+python-dotenv>=1.0
+
+# Testing
+pytest>=9.0
+pytest-cov>=7.0
+requests>=2.32
+
+# Embedding specific
+sentence-transformers>=2.0  # Pour multilingual-e5-large
+transformers>=4.0
+numpy>=1.24
+
+# Additional dependencies (auto-installed by mlx-llm-server)
+# fastapi, uvicorn, pillow

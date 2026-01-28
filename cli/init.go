@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,9 @@ var initCmd = &cobra.Command{
 
 This command will:
 - Create .grepai/config.yaml with default settings
-- Prompt for E5 model path and storage backend
+- Create a Python virtual environment in .grepai/venv/
+- Install torch and transformers automatically
+- Download the E5 model if no --model-path is provided
 - Add .grepai/ to .gitignore if present`,
 	RunE: runInit,
 }
@@ -133,6 +136,25 @@ func runInit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to install Python dependencies: %w", err)
 		}
 		fmt.Println("Python environment ready.")
+	}
+
+	// Download model if no path was provided
+	if cfg.Embedder.ModelPath == "" {
+		defaultModelDir := filepath.Join(config.GetConfigDir(cwd), "model")
+		if embedder.ModelExists(defaultModelDir) {
+			fmt.Printf("Model already downloaded at %s\n", defaultModelDir)
+		} else {
+			fmt.Printf("\nDownloading model %s...\n", embedder.DefaultModelName)
+			fmt.Println("(this may take a few minutes on first run)")
+			if err := embedder.DownloadModel(venvDir, defaultModelDir, embedder.DefaultModelName); err != nil {
+				return fmt.Errorf("failed to download model: %w", err)
+			}
+			fmt.Println("Model downloaded successfully.")
+		}
+		cfg.Embedder.ModelPath = defaultModelDir
+		if err := cfg.Save(cwd); err != nil {
+			return fmt.Errorf("failed to update configuration with model path: %w", err)
+		}
 	}
 
 	// Add .grepai/ to .gitignore

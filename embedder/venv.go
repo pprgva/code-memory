@@ -52,3 +52,37 @@ func InstallDeps(venvDir string) error {
 	}
 	return nil
 }
+
+// DefaultModelName est le modèle HuggingFace téléchargé par défaut.
+const DefaultModelName = "intfloat/multilingual-e5-large"
+
+// ModelExists vérifie si le modèle est déjà téléchargé.
+func ModelExists(modelPath string) bool {
+	_, err := os.Stat(filepath.Join(modelPath, "config.json"))
+	return err == nil
+}
+
+// DownloadModel télécharge le modèle depuis HuggingFace via le venv Python.
+func DownloadModel(venvDir, modelPath, modelName string) error {
+	if modelName == "" {
+		modelName = DefaultModelName
+	}
+
+	if err := os.MkdirAll(modelPath, 0755); err != nil {
+		return fmt.Errorf("failed to create model directory: %w", err)
+	}
+
+	pythonPath := VenvPythonPath(venvDir)
+	script := fmt.Sprintf(
+		`from huggingface_hub import snapshot_download; snapshot_download(repo_id="%s", local_dir="%s")`,
+		modelName, modelPath,
+	)
+
+	cmd := exec.Command(pythonPath, "-c", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to download model %s: %w", modelName, err)
+	}
+	return nil
+}
