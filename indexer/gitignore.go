@@ -125,6 +125,11 @@ func NewIgnoreMatcher(projectRoot string, extraIgnore []string, externalGitignor
 }
 
 func (m *IgnoreMatcher) ShouldIgnore(path string) bool {
+	// Never ignore the root directory itself
+	if path == "." || path == "" {
+		return false
+	}
+
 	// Normalize path separators for cross-platform compatibility
 	normalizedPath := filepath.ToSlash(path)
 

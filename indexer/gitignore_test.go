@@ -555,3 +555,119 @@ func TestIgnoreMatcher_ExternalGitignore_WithTilde(t *testing.T) {
 		t.Error("ShouldIgnore(\"test.ignored\") = false, expected true")
 	}
 }
+
+// TestIgnoreMatcher_RootDirectory ensures that the ".*" pattern does NOT ignore
+// the root directory "." itself, which would prevent any files from being scanned.
+// This is a regression test for the bug where ".*" pattern matched "." causing
+// the scanner to skip the entire project.
+func TestIgnoreMatcher_RootDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a .gitignore with the ".*" pattern (ignore all dotfiles)
+	gitignore := `.*
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte(gitignore), 0644); err != nil {
+		t.Fatalf("failed to create .gitignore: %v", err)
+	}
+
+	// Create some test files
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to create main.go: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0755); err != nil {
+		t.Fatalf("failed to create .git dir: %v", err)
+	}
+
+	matcher, err := NewIgnoreMatcher(tmpDir, []string{".*"}, "")
+	if err != nil {
+		t.Fatalf("failed to create ignore matcher: %v", err)
+	}
+
+	tests := []struct {
+		path     string
+		expected bool
+		desc     string
+	}{
+		// CRITICAL: Root directory must NEVER be ignored
+		{".", false, "root directory '.' must not be ignored"},
+		{"", false, "empty path must not be ignored"},
+
+		// Dotfiles should be ignored
+		{".git", true, "dotfile .git should be ignored"},
+		{".vscode", true, "dotfile .vscode should be ignored"},
+		{".env", true, "dotfile .env should be ignored"},
+
+		// Regular files should not be ignored
+		{"main.go", false, "regular file should not be ignored"},
+		{"src/app.go", false, "nested file should not be ignored"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := matcher.ShouldIgnore(tt.path)
+			if result != tt.expected {
+				t.Errorf("ShouldIgnore(%q) = %v, expected %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestScanner_DotStarPatternDoesNotBlockScan ensures that using ".*" pattern
+// to ignore dotfiles does not prevent the scanner from finding files.
+func TestScanner_DotStarPatternDoesNotBlockScan(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create files
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatalf("failed to create main.go: %v", err)
+	}
+	srcDir := filepath.Join(tmpDir, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatalf("failed to create src dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "app.go"), []byte("package src"), 0644); err != nil {
+		t.Fatalf("failed to create src/app.go: %v", err)
+	}
+
+	// Create dotfiles that should be ignored
+	if err := os.MkdirAll(filepath.Join(tmpDir, ".git"), 0755); err != nil {
+		t.Fatalf("failed to create .git dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".git", "config"), []byte("config"), 0644); err != nil {
+		t.Fatalf("failed to create .git/config: %v", err)
+	}
+
+	// Create matcher with ".*" pattern
+	matcher, err := NewIgnoreMatcher(tmpDir, []string{".*"}, "")
+	if err != nil {
+		t.Fatalf("failed to create ignore matcher: %v", err)
+	}
+
+	scanner := NewScanner(tmpDir, matcher)
+	files, _, err := scanner.Scan()
+	if err != nil {
+		t.Fatalf("scan failed: %v", err)
+	}
+
+	// Should find both main.go and src/app.go
+	if len(files) != 2 {
+		t.Errorf("expected 2 files, got %d", len(files))
+		for _, f := range files {
+			t.Logf("  found: %s", f.Path)
+		}
+	}
+
+	// Verify the files are the expected ones
+	foundPaths := make(map[string]bool)
+	for _, f := range files {
+		foundPaths[f.Path] = true
+	}
+
+	if !foundPaths["main.go"] {
+		t.Error("expected to find main.go")
+	}
+	expectedSrcPath := filepath.Join("src", "app.go")
+	if !foundPaths[expectedSrcPath] {
+		t.Errorf("expected to find %s", expectedSrcPath)
+	}
+}
