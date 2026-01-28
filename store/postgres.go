@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,7 +41,7 @@ func NewPostgresStore(ctx context.Context, dsn string, projectID string, vectorD
 func (s *PostgresStore) ensureSchema(ctx context.Context) error {
 	queries := []string{
 		`CREATE EXTENSION IF NOT EXISTS vector`,
-		`CREATE TABLE IF NOT EXISTS chunks (
+		`CREATE TABLE IF NOT EXISTS grepai_chunks (
 			id TEXT PRIMARY KEY,
 			project_id TEXT NOT NULL,
 			file_path TEXT NOT NULL,
@@ -50,9 +52,9 @@ func (s *PostgresStore) ensureSchema(ctx context.Context) error {
 			hash TEXT NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_chunks_project ON chunks(project_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(project_id, file_path)`,
-		`CREATE TABLE IF NOT EXISTS documents (
+		`CREATE INDEX IF NOT EXISTS idx_grepai_chunks_project ON grepai_chunks(project_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_grepai_chunks_file ON grepai_chunks(project_id, file_path)`,
+		`CREATE TABLE IF NOT EXISTS grepai_documents (
 			path TEXT NOT NULL,
 			project_id TEXT NOT NULL,
 			hash TEXT NOT NULL,
@@ -77,8 +79,12 @@ func (s *PostgresStore) SaveChunks(ctx context.Context, chunks []Chunk) error {
 
 	for _, chunk := range chunks {
 		vec := pgvector.NewVector(chunk.Vector)
+		content := chunk.Content
+		if !utf8.ValidString(content) {
+			content = strings.ToValidUTF8(content, "\uFFFD")
+		}
 		batch.Queue(
-			`INSERT INTO chunks (id, project_id, file_path, start_line, end_line, content, vector, hash, updated_at)
+			`INSERT INTO grepai_chunks (id, project_id, file_path, start_line, end_line, content, vector, hash, updated_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			ON CONFLICT (id) DO UPDATE SET
 				file_path = EXCLUDED.file_path,
@@ -89,7 +95,7 @@ func (s *PostgresStore) SaveChunks(ctx context.Context, chunks []Chunk) error {
 				hash = EXCLUDED.hash,
 				updated_at = EXCLUDED.updated_at`,
 			chunk.ID, s.projectID, chunk.FilePath, chunk.StartLine, chunk.EndLine,
-			chunk.Content, vec, chunk.Hash, chunk.UpdatedAt,
+			content, vec, chunk.Hash, chunk.UpdatedAt,
 		)
 	}
 
@@ -107,7 +113,7 @@ func (s *PostgresStore) SaveChunks(ctx context.Context, chunks []Chunk) error {
 
 func (s *PostgresStore) DeleteByFile(ctx context.Context, filePath string) error {
 	_, err := s.pool.Exec(ctx,
-		`DELETE FROM chunks WHERE project_id = $1 AND file_path = $2`,
+		`DELETE FROM grepai_chunks WHERE project_id = $1 AND file_path = $2`,
 		s.projectID, filePath,
 	)
 	if err != nil {
@@ -122,7 +128,7 @@ func (s *PostgresStore) Search(ctx context.Context, queryVector []float32, limit
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, file_path, start_line, end_line, content, vector, hash, updated_at,
 			1 - (vector <=> $1) as score
-		FROM chunks
+		FROM grepai_chunks
 		WHERE project_id = $2
 		ORDER BY vector <=> $1
 		LIMIT $3`,
@@ -161,7 +167,7 @@ func (s *PostgresStore) GetDocument(ctx context.Context, filePath string) (*Docu
 	var modTime time.Time
 
 	err := s.pool.QueryRow(ctx,
-		`SELECT path, hash, mod_time, chunk_ids FROM documents WHERE project_id = $1 AND path = $2`,
+		`SELECT path, hash, mod_time, chunk_ids FROM grepai_documents WHERE project_id = $1 AND path = $2`,
 		s.projectID, filePath,
 	).Scan(&doc.Path, &doc.Hash, &modTime, &doc.ChunkIDs)
 
@@ -178,7 +184,7 @@ func (s *PostgresStore) GetDocument(ctx context.Context, filePath string) (*Docu
 
 func (s *PostgresStore) SaveDocument(ctx context.Context, doc Document) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO documents (path, project_id, hash, mod_time, chunk_ids)
+		`INSERT INTO grepai_documents (path, project_id, hash, mod_time, chunk_ids)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (project_id, path) DO UPDATE SET
 			hash = EXCLUDED.hash,
@@ -194,7 +200,7 @@ func (s *PostgresStore) SaveDocument(ctx context.Context, doc Document) error {
 
 func (s *PostgresStore) DeleteDocument(ctx context.Context, filePath string) error {
 	_, err := s.pool.Exec(ctx,
-		`DELETE FROM documents WHERE project_id = $1 AND path = $2`,
+		`DELETE FROM grepai_documents WHERE project_id = $1 AND path = $2`,
 		s.projectID, filePath,
 	)
 	if err != nil {
@@ -205,7 +211,7 @@ func (s *PostgresStore) DeleteDocument(ctx context.Context, filePath string) err
 
 func (s *PostgresStore) ListDocuments(ctx context.Context) ([]string, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT path FROM documents WHERE project_id = $1`,
+		`SELECT path FROM grepai_documents WHERE project_id = $1`,
 		s.projectID,
 	)
 	if err != nil {
@@ -245,7 +251,7 @@ func (s *PostgresStore) GetStats(ctx context.Context) (*IndexStats, error) {
 
 	// Get file count
 	err := s.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM documents WHERE project_id = $1`,
+		`SELECT COUNT(*) FROM grepai_documents WHERE project_id = $1`,
 		s.projectID,
 	).Scan(&stats.TotalFiles)
 	if err != nil {
@@ -254,7 +260,7 @@ func (s *PostgresStore) GetStats(ctx context.Context) (*IndexStats, error) {
 
 	// Get chunk count and last updated
 	err = s.pool.QueryRow(ctx,
-		`SELECT COUNT(*), COALESCE(MAX(updated_at), '1970-01-01'::timestamp) FROM chunks WHERE project_id = $1`,
+		`SELECT COUNT(*), COALESCE(MAX(updated_at), '1970-01-01'::timestamp) FROM grepai_chunks WHERE project_id = $1`,
 		s.projectID,
 	).Scan(&stats.TotalChunks, &stats.LastUpdated)
 	if err != nil {
@@ -269,7 +275,7 @@ func (s *PostgresStore) GetStats(ctx context.Context) (*IndexStats, error) {
 
 func (s *PostgresStore) ListFilesWithStats(ctx context.Context) ([]FileStats, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT path, mod_time, array_length(chunk_ids, 1) FROM documents WHERE project_id = $1`,
+		`SELECT path, mod_time, array_length(chunk_ids, 1) FROM grepai_documents WHERE project_id = $1`,
 		s.projectID,
 	)
 	if err != nil {
@@ -296,7 +302,7 @@ func (s *PostgresStore) ListFilesWithStats(ctx context.Context) ([]FileStats, er
 func (s *PostgresStore) GetChunksForFile(ctx context.Context, filePath string) ([]Chunk, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, file_path, start_line, end_line, content, hash, updated_at
-		FROM chunks WHERE project_id = $1 AND file_path = $2
+		FROM grepai_chunks WHERE project_id = $1 AND file_path = $2
 		ORDER BY start_line`,
 		s.projectID, filePath,
 	)
@@ -320,7 +326,7 @@ func (s *PostgresStore) GetChunksForFile(ctx context.Context, filePath string) (
 func (s *PostgresStore) GetAllChunks(ctx context.Context) ([]Chunk, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, file_path, start_line, end_line, content, hash, updated_at
-		FROM chunks WHERE project_id = $1`,
+		FROM grepai_chunks WHERE project_id = $1`,
 		s.projectID,
 	)
 	if err != nil {
@@ -340,7 +346,7 @@ func (s *PostgresStore) GetAllChunks(ctx context.Context) ([]Chunk, error) {
 	return chunks, rows.Err()
 }
 
-// buildEnsureVectorSQL returns a SQL block that alters the "chunks.vector" column
+// buildEnsureVectorSQL returns a SQL block that alters the "grepai_chunks.vector" column
 // only if its current dimension differs from the specified one.
 func buildEnsureVectorSQL(dim int) string {
 	return fmt.Sprintf(`
@@ -351,12 +357,12 @@ BEGIN
 	SELECT atttypmod - 4
 	INTO current_length
 	FROM pg_attribute
-	WHERE attrelid = 'chunks'::regclass
+	WHERE attrelid = 'grepai_chunks'::regclass
 	  AND attname = 'vector';
 
 	IF current_length IS DISTINCT FROM %d THEN
 		RAISE NOTICE 'Altering vector size from %% to %d', current_length;
-		EXECUTE 'ALTER TABLE chunks ALTER COLUMN vector TYPE vector(%d)';
+		EXECUTE 'ALTER TABLE grepai_chunks ALTER COLUMN vector TYPE vector(%d)';
 	ELSE
 		RAISE NOTICE 'Vector size already %d, skipping ALTER';
 	END IF;

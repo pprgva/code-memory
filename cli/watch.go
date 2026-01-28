@@ -27,6 +27,7 @@ var (
 	watchStatus     bool
 	watchStop       bool
 	watchWorkspace  string
+	watchForce      bool
 )
 
 var watchCmd = &cobra.Command{
@@ -67,6 +68,7 @@ func init() {
 	watchCmd.Flags().BoolVar(&watchStatus, "status", false, "Show background watcher status")
 	watchCmd.Flags().BoolVar(&watchStop, "stop", false, "Stop the background watcher")
 	watchCmd.Flags().StringVar(&watchWorkspace, "workspace", "", "Workspace name for multi-project mode")
+	watchCmd.Flags().BoolVar(&watchForce, "force", false, "Force full re-index (ignore last index time)")
 }
 
 func runWatch(cmd *cobra.Command, args []string) error {
@@ -485,7 +487,11 @@ func runWatchForeground() error {
 	chunker := indexer.NewChunker(cfg.Chunking.Size, cfg.Chunking.Overlap)
 
 	// Initialize indexer
-	idx := indexer.NewIndexer(projectRoot, st, emb, chunker, scanner, cfg.Watch.LastIndexTime)
+	lastIndexTime := cfg.Watch.LastIndexTime
+	if watchForce {
+		lastIndexTime = time.Time{}
+	}
+	idx := indexer.NewIndexer(projectRoot, st, emb, chunker, scanner, lastIndexTime)
 
 	// Initialize symbol store and extractor
 	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))

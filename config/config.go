@@ -106,7 +106,7 @@ func DefaultConfig() *Config {
 		},
 		Chunking: ChunkingConfig{
 			Size:    512,
-			Overlap: 50,
+			Overlap: 100,
 		},
 		Watch: WatchConfig{
 			DebounceMs: 500,
@@ -248,6 +248,15 @@ func DefaultConfig() *Config {
 			".terraform",
 			".vagrant",
 
+			// AI agent config
+			".claude",
+			"CLAUDE.md",
+			"AGENTS.md",
+			"GEMINI.md",
+			".cursorrules",
+			".cursor",
+			".windsurfrules",
+
 			// Divers
 			".DS_Store",
 			"Thumbs.db",
@@ -334,6 +343,18 @@ func (c *Config) applyDefaults() {
 	// Qdrant defaults
 	if c.Store.Backend == "qdrant" && c.Store.Qdrant.Port <= 0 {
 		c.Store.Qdrant.Port = 6334
+	}
+
+	// Merge default ignore patterns into existing config
+	// Ensures old configs get new ignore entries automatically
+	existing := make(map[string]bool, len(c.Ignore))
+	for _, pattern := range c.Ignore {
+		existing[pattern] = true
+	}
+	for _, pattern := range defaults.Ignore {
+		if !existing[pattern] {
+			c.Ignore = append(c.Ignore, pattern)
+		}
 	}
 }
 

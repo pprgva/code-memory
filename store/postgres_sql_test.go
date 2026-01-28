@@ -29,10 +29,10 @@ func TestBuildEnsureVectorSQL_ContainsExpectedFragments(t *testing.T) {
 			expected := []string{
 				"DO $$",
 				"FROM pg_attribute",
-				"attrelid = 'chunks'::regclass",
+				"attrelid = 'grepai_chunks'::regclass",
 				"attname = 'vector'",
 				"IS DISTINCT FROM",
-				"ALTER TABLE chunks ALTER COLUMN vector TYPE vector(",
+				"ALTER TABLE grepai_chunks ALTER COLUMN vector TYPE vector(",
 			}
 
 			for _, frag := range expected {
