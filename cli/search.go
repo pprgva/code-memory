@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/pprgva/code-memory/config"
+	"github.com/pprgva/code-memory/embedder"
 	"github.com/pprgva/code-memory/search"
 	"github.com/pprgva/code-memory/store"
 )
@@ -94,12 +96,18 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Record start time
+	startTime := time.Now()
+
 	// Initialize embedder
 	emb, err := initializeEmbedder(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
+
+	// Detect if socket was used
+	_, usedSocket := emb.(*embedder.SocketEmbedder)
 
 	// Initialize store
 	st, err := initializeStore(ctx, cfg, projectRoot)
@@ -128,6 +136,8 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		results = search.FilterByGlob(results, searchGlobs)
 	}
 
+	// Calculate elapsed time
+	elapsed := time.Since(startTime)
 	// JSON output mode
 	if searchJSON {
 		if searchCompact {
@@ -138,6 +148,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	if len(results) == 0 {
 		fmt.Println("No results found.")
+		displaySearchTiming(elapsed, usedSocket)
 		return nil
 	}
 
@@ -168,11 +179,29 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
+	// Display timing hint
+	displaySearchTiming(elapsed, usedSocket)
+
 	return nil
 }
 
-	// Display timing hint
-	displaySearchTiming(elapsed, usedSocket)
+// displaySearchTiming prints search timing and daemon hint if applicable
+func displaySearchTiming(elapsed time.Duration, usedSocket bool) {
+	// Format duration
+	var timeStr string
+	if elapsed < time.Second {
+		timeStr = fmt.Sprintf("%.0fms", elapsed.Seconds()*1000)
+	} else {
+		timeStr = fmt.Sprintf("%.2fs", elapsed.Seconds())
+	}
+
+	fmt.Printf("\nSearch completed in %s\n", timeStr)
+
+	// Show hint if not using socket and search was slow
+	if !usedSocket && elapsed > 500*time.Millisecond {
+		fmt.Println("💡 Tip: Run 'grepai watch &' for ~10ms searches")
+	}
+}
 
 // outputSearchJSON outputs results in JSON format for AI agents
 func outputSearchJSON(results []store.SearchResult) error {
