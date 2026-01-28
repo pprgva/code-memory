@@ -251,39 +251,8 @@ func startBackgroundWatch(logDir string) error {
 	return fmt.Errorf("timeout waiting for process to become ready after %v (check logs at %s)", startupTimeout, filepath.Join(logDir, "grepai-watch.log"))
 }
 
-func initializeEmbedder(ctx context.Context, cfg *config.Config) (embedder.Embedder, error) {
-	switch cfg.Embedder.Provider {
-	case "ollama":
-		ollamaEmb := embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOllamaModel(cfg.Embedder.Model),
-			embedder.WithOllamaDimensions(cfg.Embedder.Dimensions),
-		)
-		if err := ollamaEmb.Ping(ctx); err != nil {
-			return nil, fmt.Errorf("cannot connect to Ollama: %w\nMake sure Ollama is running and has the %s model", err, cfg.Embedder.Model)
-		}
-		return ollamaEmb, nil
-	case "openai":
-		return embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(cfg.Embedder.Model),
-			embedder.WithOpenAIKey(cfg.Embedder.APIKey),
-			embedder.WithOpenAIEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOpenAIDimensions(cfg.Embedder.Dimensions),
-			embedder.WithOpenAIParallelism(cfg.Embedder.Parallelism),
-		)
-	case "lmstudio":
-		lmstudioEmb := embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithLMStudioModel(cfg.Embedder.Model),
-			embedder.WithLMStudioDimensions(cfg.Embedder.Dimensions),
-		)
-		if err := lmstudioEmb.Ping(ctx); err != nil {
-			return nil, fmt.Errorf("cannot connect to LM Studio: %w\nMake sure LM Studio is running with the %s model loaded", err, cfg.Embedder.Model)
-		}
-		return lmstudioEmb, nil
-	default:
-		return nil, fmt.Errorf("unknown embedding provider: %s", cfg.Embedder.Provider)
-	}
+func initializeEmbedder(cfg *config.Config) (embedder.Embedder, error) {
+	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, cfg.Embedder.PythonPath)
 }
 
 func initializeStore(ctx context.Context, cfg *config.Config, projectRoot string) (store.VectorStore, error) {
@@ -481,16 +450,16 @@ func runWatchForeground() error {
 
 	if !isBackgroundChild {
 		fmt.Printf("Starting grepai watch in %s\n", projectRoot)
-		fmt.Printf("Provider: %s (%s)\n", cfg.Embedder.Provider, cfg.Embedder.Model)
+		fmt.Printf("Embedder: E5 (%s)\n", cfg.Embedder.ModelPath)
 		fmt.Printf("Backend: %s\n", cfg.Store.Backend)
 	} else {
 		log.Printf("Starting grepai watch in %s", projectRoot)
-		log.Printf("Provider: %s (%s)", cfg.Embedder.Provider, cfg.Embedder.Model)
+		log.Printf("Embedder: E5 (%s)", cfg.Embedder.ModelPath)
 		log.Printf("Backend: %s", cfg.Store.Backend)
 	}
 
 	// Initialize embedder
-	emb, err := initializeEmbedder(ctx, cfg)
+	emb, err := initializeEmbedder(cfg)
 	if err != nil {
 		return err
 	}
@@ -882,12 +851,12 @@ func runWorkspaceWatchForeground(logDir string, ws *config.Workspace) error {
 	if !isBackgroundChild {
 		fmt.Printf("Starting workspace watcher: %s\n", ws.Name)
 		fmt.Printf("Backend: %s\n", ws.Store.Backend)
-		fmt.Printf("Embedder: %s (%s)\n", ws.Embedder.Provider, ws.Embedder.Model)
+		fmt.Printf("Embedder: E5 (%s)\n", ws.Embedder.ModelPath)
 		fmt.Printf("Projects: %d\n", len(ws.Projects))
 	} else {
 		log.Printf("Starting workspace watcher: %s", ws.Name)
 		log.Printf("Backend: %s", ws.Store.Backend)
-		log.Printf("Embedder: %s (%s)", ws.Embedder.Provider, ws.Embedder.Model)
+		log.Printf("Embedder: E5 (%s)", ws.Embedder.ModelPath)
 		log.Printf("Projects: %d", len(ws.Projects))
 	}
 
@@ -900,7 +869,7 @@ func runWorkspaceWatchForeground(logDir string, ws *config.Workspace) error {
 
 	// Initialize shared embedder
 	embCfg := &config.Config{Embedder: ws.Embedder}
-	emb, err := initializeEmbedder(ctx, embCfg)
+	emb, err := initializeEmbedder(embCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}

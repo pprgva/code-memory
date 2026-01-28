@@ -1,12 +1,12 @@
 package embedder
 
-// MaxBatchSize is the maximum number of inputs per OpenAI embedding API call.
-// OpenAI allows 2048, but we use 2000 as a safety margin.
-const MaxBatchSize = 2000
+// MaxBatchSize is the maximum number of inputs per local E5 model embedding call.
+// Limited to 64 to fit within local GPU memory constraints.
+const MaxBatchSize = 64
 
-// MaxBatchTokens is the maximum total tokens per OpenAI embedding API batch.
-// OpenAI has a 300,000 token limit. We use 280,000 for safety margin.
-const MaxBatchTokens = 280000
+// MaxBatchTokens is the maximum total tokens per local E5 model embedding batch.
+// Local E5 model has max_length=512. We use 32,000 as a safe total budget.
+const MaxBatchTokens = 32000
 
 // EstimateTokens estimates the token count for a text string.
 // Uses a conservative estimate of ~4 characters per token for English text.

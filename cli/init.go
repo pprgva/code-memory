@@ -12,14 +12,9 @@ import (
 )
 
 var (
-	initProvider       string
+	initModelPath      string
 	initBackend        string
 	initNonInteractive bool
-)
-
-const (
-	openAI3SmallDimensions      = 1536
-	lmStudioEmbeddingDimensions = 768
 )
 
 var initCmd = &cobra.Command{
@@ -29,14 +24,13 @@ var initCmd = &cobra.Command{
 
 This command will:
 - Create .grepai/config.yaml with default settings
-- Prompt for embedding provider (Ollama or OpenAI)
-- Prompt for storage backend (GOB file or PostgreSQL)
+- Prompt for E5 model path and storage backend
 - Add .grepai/ to .gitignore if present`,
 	RunE: runInit,
 }
 
 func init() {
-	initCmd.Flags().StringVarP(&initProvider, "provider", "p", "", "Embedding provider (ollama, lmstudio, or openai)")
+	initCmd.Flags().StringVar(&initModelPath, "model-path", "", "Path to E5 model directory")
 	initCmd.Flags().StringVarP(&initBackend, "backend", "b", "", "Storage backend (gob, postgres, or qdrant)")
 	initCmd.Flags().BoolVar(&initNonInteractive, "yes", false, "Use defaults without prompting")
 }
@@ -47,7 +41,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get current directory: %w", err)
 	}
 
-	// Check if already initialized
 	if config.Exists(cwd) {
 		fmt.Println("grepai is already initialized in this directory.")
 		fmt.Printf("Configuration: %s\n", config.GetConfigPath(cwd))
@@ -56,48 +49,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	cfg := config.DefaultConfig()
 
-	// Interactive mode
 	if !initNonInteractive {
 		reader := bufio.NewReader(os.Stdin)
 
-		// Provider selection
-		if initProvider == "" {
-			fmt.Println("\nSelect embedding provider:")
-			fmt.Println("  1) ollama (local, privacy-first, requires Ollama running)")
-			fmt.Println("  2) lmstudio (local, OpenAI-compatible, requires LM Studio running)")
-			fmt.Println("  3) openai (cloud, requires API key)")
-			fmt.Print("Choice [1]: ")
-
+		// Model path
+		if initModelPath == "" {
+			fmt.Print("\nPath to E5 model directory: ")
 			input, _ := reader.ReadString('\n')
-			input = strings.TrimSpace(input)
-
-			switch input {
-			case "2", "lmstudio":
-				cfg.Embedder.Provider = "lmstudio"
-				cfg.Embedder.Model = "text-embedding-nomic-embed-text-v1.5"
-				cfg.Embedder.Endpoint = "http://127.0.0.1:1234"
-				cfg.Embedder.Dimensions = lmStudioEmbeddingDimensions
-			case "3", "openai":
-				cfg.Embedder.Provider = "openai"
-				cfg.Embedder.Model = "text-embedding-3-small"
-				cfg.Embedder.Endpoint = "https://api.openai.com/v1"
-				cfg.Embedder.Dimensions = openAI3SmallDimensions
-			default:
-				cfg.Embedder.Provider = "ollama"
-			}
-		} else {
-			cfg.Embedder.Provider = initProvider
-			switch initProvider {
-			case "lmstudio":
-				cfg.Embedder.Model = "text-embedding-nomic-embed-text-v1.5"
-				cfg.Embedder.Endpoint = "http://127.0.0.1:1234"
-				cfg.Embedder.Dimensions = lmStudioEmbeddingDimensions
-			case "openai":
-				cfg.Embedder.Model = "text-embedding-3-small"
-				cfg.Embedder.Endpoint = "https://api.openai.com/v1"
-				cfg.Embedder.Dimensions = openAI3SmallDimensions
-			}
+			initModelPath = strings.TrimSpace(input)
 		}
+		cfg.Embedder.ModelPath = initModelPath
 
 		// Backend selection
 		if initBackend == "" {
@@ -133,25 +94,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 					cfg.Store.Qdrant.Port = 6334
 				} else {
 					var portInt int
-					_, err := fmt.Sscanf(port, "%d", &portInt)
-					if err != nil {
+					if _, err := fmt.Sscanf(port, "%d", &portInt); err != nil {
 						return fmt.Errorf("invalid port number: %w", err)
 					}
 					cfg.Store.Qdrant.Port = portInt
 				}
-
-				fmt.Print("Use TLS? (y/n) [n]: ")
-				useTLS, _ := reader.ReadString('\n')
-				useTLS = strings.TrimSpace(strings.ToLower(useTLS))
-				cfg.Store.Qdrant.UseTLS = useTLS == "y" || useTLS == "yes"
-
-				fmt.Print("Collection name (optional, defaults to sanitized project path): ")
-				collection, _ := reader.ReadString('\n')
-				cfg.Store.Qdrant.Collection = strings.TrimSpace(collection)
-
-				fmt.Print("API key (optional, for Qdrant Cloud): ")
-				apiKey, _ := reader.ReadString('\n')
-				cfg.Store.Qdrant.APIKey = strings.TrimSpace(apiKey)
 			default:
 				cfg.Store.Backend = "gob"
 			}
@@ -159,16 +106,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 			cfg.Store.Backend = initBackend
 		}
 	} else {
-		// Non-interactive with flags
-		if initProvider != "" {
-			cfg.Embedder.Provider = initProvider
-		}
+		cfg.Embedder.ModelPath = initModelPath
 		if initBackend != "" {
 			cfg.Store.Backend = initBackend
 		}
 	}
 
-	// Save configuration
 	if err := cfg.Save(cwd); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
@@ -189,18 +132,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Start the indexing daemon: grepai watch")
 	fmt.Println("  2. Search your code: grepai search \"your query\"")
-
-	switch cfg.Embedder.Provider {
-	case "ollama":
-		fmt.Println("\nMake sure Ollama is running with the nomic-embed-text model:")
-		fmt.Println("  ollama pull nomic-embed-text")
-	case "lmstudio":
-		fmt.Println("\nMake sure LM Studio is running with an embedding model loaded.")
-		fmt.Printf("  Model: %s\n", cfg.Embedder.Model)
-		fmt.Printf("  Endpoint: %s\n", cfg.Embedder.Endpoint)
-	case "openai":
-		fmt.Println("\nMake sure OPENAI_API_KEY is set in your environment.")
-	}
 
 	return nil
 }

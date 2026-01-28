@@ -350,30 +350,7 @@ func (s *Server) handleWorkspaceSearch(ctx context.Context, query string, limit 
 
 // createWorkspaceEmbedder creates an embedder based on workspace configuration.
 func (s *Server) createWorkspaceEmbedder(ws *config.Workspace) (embedder.Embedder, error) {
-	switch ws.Embedder.Provider {
-	case "ollama":
-		return embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(ws.Embedder.Endpoint),
-			embedder.WithOllamaModel(ws.Embedder.Model),
-			embedder.WithOllamaDimensions(ws.Embedder.Dimensions),
-		), nil
-	case "openai":
-		return embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(ws.Embedder.Model),
-			embedder.WithOpenAIKey(ws.Embedder.APIKey),
-			embedder.WithOpenAIEndpoint(ws.Embedder.Endpoint),
-			embedder.WithOpenAIDimensions(ws.Embedder.Dimensions),
-			embedder.WithOpenAIParallelism(ws.Embedder.Parallelism),
-		)
-	case "lmstudio":
-		return embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(ws.Embedder.Endpoint),
-			embedder.WithLMStudioModel(ws.Embedder.Model),
-			embedder.WithLMStudioDimensions(ws.Embedder.Dimensions),
-		), nil
-	default:
-		return nil, fmt.Errorf("unknown embedding provider: %s", ws.Embedder.Provider)
-	}
+	return embedder.NewE5Embedder(ws.Embedder.ModelPath, ws.Embedder.PythonPath)
 }
 
 // createWorkspaceStore creates a vector store based on workspace configuration.
@@ -689,8 +666,8 @@ func (s *Server) handleIndexStatus(ctx context.Context, _ mcp.CallToolRequest) (
 		TotalChunks:  stats.TotalChunks,
 		IndexSize:    formatBytes(stats.IndexSize),
 		LastUpdated:  stats.LastUpdated.Format("2006-01-02 15:04:05"),
-		Provider:     cfg.Embedder.Provider,
-		Model:        cfg.Embedder.Model,
+		Provider:     "e5",
+		Model:        cfg.Embedder.ModelPath,
 		SymbolsReady: symbolsReady,
 	}
 
@@ -704,30 +681,7 @@ func (s *Server) handleIndexStatus(ctx context.Context, _ mcp.CallToolRequest) (
 
 // createEmbedder creates an embedder based on configuration.
 func (s *Server) createEmbedder(cfg *config.Config) (embedder.Embedder, error) {
-	switch cfg.Embedder.Provider {
-	case "ollama":
-		return embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOllamaModel(cfg.Embedder.Model),
-			embedder.WithOllamaDimensions(cfg.Embedder.Dimensions),
-		), nil
-	case "openai":
-		return embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(cfg.Embedder.Model),
-			embedder.WithOpenAIKey(cfg.Embedder.APIKey),
-			embedder.WithOpenAIEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOpenAIDimensions(cfg.Embedder.Dimensions),
-			embedder.WithOpenAIParallelism(cfg.Embedder.Parallelism),
-		)
-	case "lmstudio":
-		return embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithLMStudioModel(cfg.Embedder.Model),
-			embedder.WithLMStudioDimensions(cfg.Embedder.Dimensions),
-		), nil
-	default:
-		return nil, fmt.Errorf("unknown embedding provider: %s", cfg.Embedder.Provider)
-	}
+	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, cfg.Embedder.PythonPath)
 }
 
 // createStore creates a vector store based on configuration.

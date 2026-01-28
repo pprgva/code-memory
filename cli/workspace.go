@@ -100,7 +100,7 @@ func runWorkspaceList(cmd *cobra.Command, args []string) error {
 	for name, ws := range cfg.Workspaces {
 		fmt.Printf("  %s\n", name)
 		fmt.Printf("    Backend: %s\n", ws.Store.Backend)
-		fmt.Printf("    Embedder: %s (%s)\n", ws.Embedder.Provider, ws.Embedder.Model)
+		fmt.Printf("    Embedder: E5 (%s)\n", ws.Embedder.ModelPath)
 		fmt.Printf("    Projects: %d\n", len(ws.Projects))
 	}
 
@@ -140,10 +140,10 @@ func runWorkspaceShow(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\nEmbedder:\n")
-	fmt.Printf("  Provider: %s\n", ws.Embedder.Provider)
-	fmt.Printf("  Model: %s\n", ws.Embedder.Model)
-	if ws.Embedder.Endpoint != "" {
-		fmt.Printf("  Endpoint: %s\n", ws.Embedder.Endpoint)
+	fmt.Printf("  Type: E5\n")
+	fmt.Printf("  Model path: %s\n", ws.Embedder.ModelPath)
+	if ws.Embedder.PythonPath != "" {
+		fmt.Printf("  Python path: %s\n", ws.Embedder.PythonPath)
 	}
 	if ws.Embedder.Dimensions > 0 {
 		fmt.Printf("  Dimensions: %d\n", ws.Embedder.Dimensions)
@@ -270,71 +270,26 @@ func runWorkspaceCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid choice: %s", backendChoice)
 	}
 
-	// Select embedder
-	fmt.Println("\nSelect embedding provider:")
-	fmt.Println("  1. Ollama (local, default)")
-	fmt.Println("  2. OpenAI")
-	fmt.Println("  3. LM Studio (local)")
-	fmt.Print("Choice [1]: ")
-	embedderChoice, _ := reader.ReadString('\n')
-	embedderChoice = strings.TrimSpace(embedderChoice)
-	if embedderChoice == "" {
-		embedderChoice = "1"
+	// Configure E5 embedder
+	fmt.Println("\nE5 Embedder Configuration:")
+	fmt.Print("Model path (e.g. /path/to/e5-model): ")
+	modelPath, _ := reader.ReadString('\n')
+	modelPath = strings.TrimSpace(modelPath)
+	if modelPath == "" {
+		return fmt.Errorf("model path is required")
+	}
+
+	fmt.Print("Python path [python3]: ")
+	pythonPath, _ := reader.ReadString('\n')
+	pythonPath = strings.TrimSpace(pythonPath)
+	if pythonPath == "" {
+		pythonPath = "python3"
 	}
 
 	var embedderConfig config.EmbedderConfig
-	switch embedderChoice {
-	case "1":
-		embedderConfig.Provider = "ollama"
-		fmt.Print("Ollama endpoint [http://localhost:11434]: ")
-		endpoint, _ := reader.ReadString('\n')
-		endpoint = strings.TrimSpace(endpoint)
-		if endpoint == "" {
-			endpoint = "http://localhost:11434"
-		}
-		embedderConfig.Endpoint = endpoint
-		fmt.Print("Model [nomic-embed-text]: ")
-		model, _ := reader.ReadString('\n')
-		model = strings.TrimSpace(model)
-		if model == "" {
-			model = "nomic-embed-text"
-		}
-		embedderConfig.Model = model
-		embedderConfig.Dimensions = 768
-	case "2":
-		embedderConfig.Provider = "openai"
-		fmt.Print("OpenAI API Key: ")
-		apiKey, _ := reader.ReadString('\n')
-		embedderConfig.APIKey = strings.TrimSpace(apiKey)
-		fmt.Print("Model [text-embedding-3-small]: ")
-		model, _ := reader.ReadString('\n')
-		model = strings.TrimSpace(model)
-		if model == "" {
-			model = "text-embedding-3-small"
-		}
-		embedderConfig.Model = model
-		embedderConfig.Endpoint = "https://api.openai.com/v1"
-		embedderConfig.Dimensions = 1536
-	case "3":
-		embedderConfig.Provider = "lmstudio"
-		fmt.Print("LM Studio endpoint [http://127.0.0.1:1234]: ")
-		endpoint, _ := reader.ReadString('\n')
-		endpoint = strings.TrimSpace(endpoint)
-		if endpoint == "" {
-			endpoint = "http://127.0.0.1:1234"
-		}
-		embedderConfig.Endpoint = endpoint
-		fmt.Print("Model [nomic-embed-text]: ")
-		model, _ := reader.ReadString('\n')
-		model = strings.TrimSpace(model)
-		if model == "" {
-			model = "nomic-embed-text"
-		}
-		embedderConfig.Model = model
-		embedderConfig.Dimensions = 768
-	default:
-		return fmt.Errorf("invalid choice: %s", embedderChoice)
-	}
+	embedderConfig.ModelPath = modelPath
+	embedderConfig.PythonPath = pythonPath
+	embedderConfig.Dimensions = 1024
 
 	// Create workspace
 	ws := config.Workspace{

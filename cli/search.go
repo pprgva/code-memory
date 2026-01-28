@@ -92,33 +92,9 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize embedder
-	var emb embedder.Embedder
-	switch cfg.Embedder.Provider {
-	case "ollama":
-		emb = embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOllamaModel(cfg.Embedder.Model),
-			embedder.WithOllamaDimensions(cfg.Embedder.Dimensions),
-		)
-	case "openai":
-		var err error
-		emb, err = embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(cfg.Embedder.Model),
-			embedder.WithOpenAIKey(cfg.Embedder.APIKey),
-			embedder.WithOpenAIEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOpenAIDimensions(cfg.Embedder.Dimensions),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to initialize OpenAI embedder: %w", err)
-		}
-	case "lmstudio":
-		emb = embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithLMStudioModel(cfg.Embedder.Model),
-			embedder.WithLMStudioDimensions(cfg.Embedder.Dimensions),
-		)
-	default:
-		return fmt.Errorf("unknown embedding provider: %s", cfg.Embedder.Provider)
+	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, cfg.Embedder.PythonPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 
@@ -260,28 +236,9 @@ func SearchJSON(projectRoot string, query string, limit int) ([]store.SearchResu
 		return nil, err
 	}
 
-	var emb embedder.Embedder
-	switch cfg.Embedder.Provider {
-	case "ollama":
-		emb = embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithOllamaModel(cfg.Embedder.Model),
-		)
-	case "openai":
-		var err error
-		emb, err = embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(cfg.Embedder.Model),
-		)
-		if err != nil {
-			return nil, err
-		}
-	case "lmstudio":
-		emb = embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(cfg.Embedder.Endpoint),
-			embedder.WithLMStudioModel(cfg.Embedder.Model),
-		)
-	default:
-		return nil, fmt.Errorf("unknown provider: %s", cfg.Embedder.Provider)
+	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, cfg.Embedder.PythonPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 
@@ -335,32 +292,9 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 	}
 
 	// Initialize embedder
-	var emb embedder.Embedder
-	switch ws.Embedder.Provider {
-	case "ollama":
-		emb = embedder.NewOllamaEmbedder(
-			embedder.WithOllamaEndpoint(ws.Embedder.Endpoint),
-			embedder.WithOllamaModel(ws.Embedder.Model),
-			embedder.WithOllamaDimensions(ws.Embedder.Dimensions),
-		)
-	case "openai":
-		emb, err = embedder.NewOpenAIEmbedder(
-			embedder.WithOpenAIModel(ws.Embedder.Model),
-			embedder.WithOpenAIKey(ws.Embedder.APIKey),
-			embedder.WithOpenAIEndpoint(ws.Embedder.Endpoint),
-			embedder.WithOpenAIDimensions(ws.Embedder.Dimensions),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to initialize OpenAI embedder: %w", err)
-		}
-	case "lmstudio":
-		emb = embedder.NewLMStudioEmbedder(
-			embedder.WithLMStudioEndpoint(ws.Embedder.Endpoint),
-			embedder.WithLMStudioModel(ws.Embedder.Model),
-			embedder.WithLMStudioDimensions(ws.Embedder.Dimensions),
-		)
-	default:
-		return fmt.Errorf("unknown embedding provider: %s", ws.Embedder.Provider)
+	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, ws.Embedder.PythonPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 

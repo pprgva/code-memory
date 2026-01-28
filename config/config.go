@@ -56,12 +56,9 @@ type BoostRule struct {
 }
 
 type EmbedderConfig struct {
-	Provider    string `yaml:"provider"` // ollama | lmstudio | openai
-	Model       string `yaml:"model"`
-	Endpoint    string `yaml:"endpoint,omitempty"`
-	APIKey      string `yaml:"api_key,omitempty"`
-	Dimensions  int    `yaml:"dimensions,omitempty"`
-	Parallelism int    `yaml:"parallelism"` // Number of parallel workers for batch embedding (default: 4)
+	ModelPath  string `yaml:"model_path"`            // Path to E5 model directory
+	PythonPath string `yaml:"python_path,omitempty"` // Path to python3 binary (default: "python3")
+	Dimensions int    `yaml:"dimensions,omitempty"`  // Auto-detected from worker, default 1024
 }
 
 type StoreConfig struct {
@@ -102,11 +99,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		Version: 1,
 		Embedder: EmbedderConfig{
-			Provider:   "ollama",
-			Model:      "nomic-embed-text",
-			Endpoint:   "http://localhost:11434",
-			Dimensions: 768,
-			// Parallelism intentionally omitted - only applies to OpenAI
+			ModelPath:  "",
+			PythonPath: "python3",
+			Dimensions: 1024,
 		},
 		Store: StoreConfig{
 			Backend: "gob",
@@ -239,35 +234,11 @@ func (c *Config) applyDefaults() {
 	defaults := DefaultConfig()
 
 	// Embedder defaults
-	if c.Embedder.Endpoint == "" {
-		switch c.Embedder.Provider {
-		case "ollama":
-			c.Embedder.Endpoint = "http://localhost:11434"
-		case "lmstudio":
-			c.Embedder.Endpoint = "http://127.0.0.1:1234"
-		case "openai":
-			c.Embedder.Endpoint = "https://api.openai.com/v1"
-		default:
-			c.Embedder.Endpoint = defaults.Embedder.Endpoint
-		}
+	if c.Embedder.PythonPath == "" {
+		c.Embedder.PythonPath = "python3"
 	}
-
 	if c.Embedder.Dimensions == 0 {
-		switch c.Embedder.Provider {
-		case "ollama":
-			c.Embedder.Dimensions = 768 // nomic-embed-text default
-		case "lmstudio":
-			c.Embedder.Dimensions = 768 // nomic default
-		case "openai":
-			c.Embedder.Dimensions = 1536 // text-embedding-3-small default
-		default:
-			c.Embedder.Dimensions = defaults.Embedder.Dimensions
-		}
-	}
-
-	// Parallelism default (only used by OpenAI embedder)
-	if c.Embedder.Parallelism <= 0 {
-		c.Embedder.Parallelism = 4
+		c.Embedder.Dimensions = 1024
 	}
 
 	// Chunking defaults

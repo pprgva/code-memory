@@ -62,9 +62,8 @@ func TestWorkspaceConfigOperations(t *testing.T) {
 				},
 			},
 			Embedder: EmbedderConfig{
-				Provider:   "ollama",
-				Model:      "nomic-embed-text",
-				Endpoint:   "http://localhost:11434",
+				ModelPath:  "/path/to/e5-model",
+				PythonPath: "python3",
 				Dimensions: 768,
 			},
 			Projects: []ProjectEntry{},
@@ -232,9 +231,8 @@ func TestWorkspaceConfigOperations(t *testing.T) {
 				},
 			},
 			Embedder: EmbedderConfig{
-				Provider:   "ollama",
-				Model:      "nomic-embed-text",
-				Endpoint:   "http://localhost:11434",
+				ModelPath:  "/path/to/e5-model",
+				PythonPath: "python3",
 				Dimensions: 768,
 			},
 			Projects: []ProjectEntry{

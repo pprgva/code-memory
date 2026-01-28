@@ -183,7 +183,7 @@ func (m model) viewStats() string {
 	}
 
 	sb.WriteString(normalStyle.Render("Provider:         "))
-	sb.WriteString(fmt.Sprintf("%s (%s)\n", m.cfg.Embedder.Provider, m.cfg.Embedder.Model))
+	sb.WriteString(fmt.Sprintf("E5 (%s)\n", m.cfg.Embedder.ModelPath))
 
 	sb.WriteString("\n")
 	sb.WriteString(helpStyle.Render("[Enter] Browse files  [q] Quit"))
