@@ -274,8 +274,13 @@ func GetSymbolIndexPath(projectRoot string) string {
 	return filepath.Join(GetConfigDir(projectRoot), SymbolIndexFileName)
 }
 
-func GetVenvDir(projectRoot string) string {
-	return filepath.Join(GetConfigDir(projectRoot), "venv")
+// GetVenvDir retourne le chemin global du venv Python : ~/.local/share/grepai/venv
+func GetVenvDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".local", "share", "grepai", "venv")
 }
 
 func Load(projectRoot string) (*Config, error) {

@@ -251,8 +251,8 @@ func startBackgroundWatch(logDir string) error {
 	return fmt.Errorf("timeout waiting for process to become ready after %v (check logs at %s)", startupTimeout, filepath.Join(logDir, "grepai-watch.log"))
 }
 
-func initializeEmbedder(cfg *config.Config, projectRoot string) (embedder.Embedder, error) {
-	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir(projectRoot))
+func initializeEmbedder(cfg *config.Config) (embedder.Embedder, error) {
+	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
 }
 
 func initializeStore(ctx context.Context, cfg *config.Config, projectRoot string) (store.VectorStore, error) {
@@ -459,7 +459,7 @@ func runWatchForeground() error {
 	}
 
 	// Initialize embedder
-	emb, err := initializeEmbedder(cfg, projectRoot)
+	emb, err := initializeEmbedder(cfg)
 	if err != nil {
 		return err
 	}
@@ -868,7 +868,7 @@ func runWorkspaceWatchForeground(logDir string, ws *config.Workspace) error {
 	}
 
 	// Initialize shared embedder (workspace utilise le premier projet comme racine pour le venv)
-	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir(ws.Projects[0].Path))
+	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}

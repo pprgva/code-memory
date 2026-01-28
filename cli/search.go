@@ -92,7 +92,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize embedder
-	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir(projectRoot))
+	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
@@ -236,7 +236,7 @@ func SearchJSON(projectRoot string, query string, limit int) ([]store.SearchResu
 		return nil, err
 	}
 
-	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir(projectRoot))
+	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
 	}
@@ -292,7 +292,7 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 	}
 
 	// Initialize embedder (workspace utilise le premier projet comme racine pour le venv)
-	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir(ws.Projects[0].Path))
+	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir())
 	if err != nil {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}

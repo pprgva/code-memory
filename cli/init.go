@@ -122,7 +122,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nCreated configuration at %s\n", config.GetConfigPath(cwd))
 
 	// Setup Python venv
-	venvDir := config.GetVenvDir(cwd)
+	venvDir := config.GetVenvDir()
 	if embedder.VenvExists(venvDir) {
 		fmt.Println("Python venv already exists, skipping setup.")
 	} else {
