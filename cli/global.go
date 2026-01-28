@@ -300,7 +300,12 @@ func getIndexedFileCount(projectRoot string, cfg *config.Config) (int, error) {
 		return stats.TotalFiles, nil
 
 	case "postgres":
-		st, err := store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, cfg.Embedder.Dimensions)
+		// Use ProjectID (UUID) if available, fall back to projectRoot for old configs
+		projectID := cfg.ProjectID
+		if projectID == "" {
+			projectID = projectRoot
+		}
+		st, err := store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectID, cfg.Embedder.Dimensions)
 		if err != nil {
 			return 0, err
 		}

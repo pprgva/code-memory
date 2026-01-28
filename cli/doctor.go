@@ -317,7 +317,12 @@ func checkStore(configOK bool, projectRoot string, cfg *config.Config) (store.Ve
 		if dims == 0 {
 			dims = 1024
 		}
-		s, err := store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, dims)
+		// Use ProjectID (UUID) if available, fall back to projectRoot for old configs
+		projectID := cfg.ProjectID
+		if projectID == "" {
+			projectID = projectRoot
+		}
+		s, err := store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectID, dims)
 		if err != nil {
 			return nil, checkResult{
 				Name:    "Store",

@@ -324,7 +324,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		st = gobStore
 	case "postgres":
 		var err error
-		st, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, cfg.Embedder.Dimensions)
+		// Use ProjectID (UUID) if available, fall back to projectRoot for old configs
+		projectID := cfg.ProjectID
+		if projectID == "" {
+			projectID = projectRoot
+		}
+		st, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectID, cfg.Embedder.Dimensions)
 		if err != nil {
 			return fmt.Errorf("failed to connect to postgres: %w", err)
 		}
