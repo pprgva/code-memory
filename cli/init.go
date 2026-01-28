@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/pprgva/code-memory/config"
+	"github.com/pprgva/code-memory/embedder"
 	"github.com/pprgva/code-memory/indexer"
 )
 
@@ -117,6 +118,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\nCreated configuration at %s\n", config.GetConfigPath(cwd))
+
+	// Setup Python venv
+	venvDir := config.GetVenvDir(cwd)
+	if embedder.VenvExists(venvDir) {
+		fmt.Println("Python venv already exists, skipping setup.")
+	} else {
+		fmt.Println("\nCreating Python virtual environment...")
+		if err := embedder.SetupVenv(venvDir, "python3"); err != nil {
+			return fmt.Errorf("failed to create Python venv: %w", err)
+		}
+		fmt.Println("Installing dependencies (torch, transformers)...")
+		if err := embedder.InstallDeps(venvDir); err != nil {
+			return fmt.Errorf("failed to install Python dependencies: %w", err)
+		}
+		fmt.Println("Python environment ready.")
+	}
 
 	// Add .grepai/ to .gitignore
 	gitignorePath := cwd + "/.gitignore"

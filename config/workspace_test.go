@@ -63,7 +63,6 @@ func TestWorkspaceConfigOperations(t *testing.T) {
 			},
 			Embedder: EmbedderConfig{
 				ModelPath:  "/path/to/e5-model",
-				PythonPath: "python3",
 				Dimensions: 768,
 			},
 			Projects: []ProjectEntry{},
@@ -232,7 +231,6 @@ func TestWorkspaceConfigOperations(t *testing.T) {
 			},
 			Embedder: EmbedderConfig{
 				ModelPath:  "/path/to/e5-model",
-				PythonPath: "python3",
 				Dimensions: 768,
 			},
 			Projects: []ProjectEntry{

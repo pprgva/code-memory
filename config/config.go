@@ -56,9 +56,8 @@ type BoostRule struct {
 }
 
 type EmbedderConfig struct {
-	ModelPath  string `yaml:"model_path"`            // Path to E5 model directory
-	PythonPath string `yaml:"python_path,omitempty"` // Path to python3 binary (default: "python3")
-	Dimensions int    `yaml:"dimensions,omitempty"`  // Auto-detected from worker, default 1024
+	ModelPath  string `yaml:"model_path"`           // Path to E5 model directory
+	Dimensions int    `yaml:"dimensions,omitempty"` // Auto-detected from worker, default 1024
 }
 
 type StoreConfig struct {
@@ -100,7 +99,6 @@ func DefaultConfig() *Config {
 		Version: 1,
 		Embedder: EmbedderConfig{
 			ModelPath:  "",
-			PythonPath: "python3",
 			Dimensions: 1024,
 		},
 		Store: StoreConfig{
@@ -173,21 +171,89 @@ func DefaultConfig() *Config {
 			CheckOnStartup: false, // Opt-in by default for privacy
 		},
 		Ignore: []string{
+			// VCS
 			".git",
+			".svn",
+			".hg",
+
+			// Outil grepai
 			".grepai",
+			"qdrant_storage",
+
+			// IDE / éditeurs
+			".idea",
+			".vscode",
+			".vs",
+			".eclipse",
+			".settings",
+
+			// JavaScript / TypeScript
 			"node_modules",
-			"vendor",
-			"bin",
+			".next",
+			".nuxt",
+			".output",
+			".svelte-kit",
+			"bower_components",
+
+			// Build / output génériques
+			"build",
+			"out",
 			"dist",
+			"bin",
+			"obj",
+			"coverage",
+			".cache",
+
+			// Python
 			"__pycache__",
 			".venv",
 			"venv",
-			".idea",
-			".vscode",
+			".tox",
+			".mypy_cache",
+			".pytest_cache",
+			".ruff_cache",
+			"*.egg-info",
+
+			// Go
+			"vendor",
+
+			// Rust
 			"target",
+
+			// Zig
 			".zig-cache",
 			"zig-out",
-			"qdrant_storage",
+
+			// Java / Kotlin
+			".gradle",
+			".m2",
+
+			// .NET / C#
+			"packages",
+
+			// PHP / Symfony / Laravel
+			"var",
+
+			// iOS / macOS
+			"Pods",
+			"DerivedData",
+			".build",
+			".swiftpm",
+
+			// Dart / Flutter
+			".dart_tool",
+			".pub-cache",
+
+			// Infra / DevOps
+			".terraform",
+			".vagrant",
+
+			// Divers
+			".DS_Store",
+			"Thumbs.db",
+			"tmp",
+			"temp",
+			"logs",
 		},
 	}
 }
@@ -206,6 +272,10 @@ func GetIndexPath(projectRoot string) string {
 
 func GetSymbolIndexPath(projectRoot string) string {
 	return filepath.Join(GetConfigDir(projectRoot), SymbolIndexFileName)
+}
+
+func GetVenvDir(projectRoot string) string {
+	return filepath.Join(GetConfigDir(projectRoot), "venv")
 }
 
 func Load(projectRoot string) (*Config, error) {
@@ -234,9 +304,6 @@ func (c *Config) applyDefaults() {
 	defaults := DefaultConfig()
 
 	// Embedder defaults
-	if c.Embedder.PythonPath == "" {
-		c.Embedder.PythonPath = "python3"
-	}
 	if c.Embedder.Dimensions == 0 {
 		c.Embedder.Dimensions = 1024
 	}

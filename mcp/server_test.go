@@ -11,7 +11,7 @@ import (
 )
 
 // TestServerCreateEmbedder_UsesConfigFields verifies that createEmbedder
-// reads ModelPath and PythonPath from config. We cannot fully test without
+// reads ModelPath from config and uses the venv. We cannot fully test without
 // a real Python E5 worker, so we just verify the config is wired correctly
 // by checking that an empty model path produces an error.
 func TestServerCreateEmbedder_UsesConfigFields(t *testing.T) {

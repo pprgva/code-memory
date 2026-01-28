@@ -142,9 +142,6 @@ func runWorkspaceShow(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nEmbedder:\n")
 	fmt.Printf("  Type: E5\n")
 	fmt.Printf("  Model path: %s\n", ws.Embedder.ModelPath)
-	if ws.Embedder.PythonPath != "" {
-		fmt.Printf("  Python path: %s\n", ws.Embedder.PythonPath)
-	}
 	if ws.Embedder.Dimensions > 0 {
 		fmt.Printf("  Dimensions: %d\n", ws.Embedder.Dimensions)
 	}
@@ -279,16 +276,8 @@ func runWorkspaceCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("model path is required")
 	}
 
-	fmt.Print("Python path [python3]: ")
-	pythonPath, _ := reader.ReadString('\n')
-	pythonPath = strings.TrimSpace(pythonPath)
-	if pythonPath == "" {
-		pythonPath = "python3"
-	}
-
 	var embedderConfig config.EmbedderConfig
 	embedderConfig.ModelPath = modelPath
-	embedderConfig.PythonPath = pythonPath
 	embedderConfig.Dimensions = 1024
 
 	// Create workspace

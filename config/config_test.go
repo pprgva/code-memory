@@ -17,10 +17,6 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected empty model_path, got %s", cfg.Embedder.ModelPath)
 	}
 
-	if cfg.Embedder.PythonPath != "python3" {
-		t.Errorf("expected python_path python3, got %s", cfg.Embedder.PythonPath)
-	}
-
 	if cfg.Embedder.Dimensions != 1024 {
 		t.Errorf("expected dimensions 1024, got %d", cfg.Embedder.Dimensions)
 	}
@@ -47,7 +43,6 @@ func TestConfigSaveAndLoad(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.Embedder.ModelPath = "/path/to/e5-model"
-	cfg.Embedder.PythonPath = "/usr/bin/python3"
 	cfg.Embedder.Dimensions = 768
 	cfg.Store.Backend = "postgres"
 
@@ -70,10 +65,6 @@ func TestConfigSaveAndLoad(t *testing.T) {
 
 	if loaded.Embedder.ModelPath != "/path/to/e5-model" {
 		t.Errorf("expected model_path /path/to/e5-model, got %s", loaded.Embedder.ModelPath)
-	}
-
-	if loaded.Embedder.PythonPath != "/usr/bin/python3" {
-		t.Errorf("expected python_path /usr/bin/python3, got %s", loaded.Embedder.PythonPath)
 	}
 
 	if loaded.Embedder.Dimensions != 768 {
@@ -138,30 +129,16 @@ func TestBackwardCompatibility(t *testing.T) {
 	tests := []struct {
 		name               string
 		configYAML         string
-		expectedPythonPath string
 		expectedDimensions int
 	}{
-		{
-			name: "missing python_path defaults to python3",
-			configYAML: `version: 1
-embedder:
-  model_path: /path/to/model
-store:
-  backend: gob
-`,
-			expectedPythonPath: "python3",
-			expectedDimensions: 1024,
-		},
 		{
 			name: "missing dimensions defaults to 1024",
 			configYAML: `version: 1
 embedder:
   model_path: /path/to/model
-  python_path: /usr/bin/python3
 store:
   backend: gob
 `,
-			expectedPythonPath: "/usr/bin/python3",
 			expectedDimensions: 1024,
 		},
 		{
@@ -173,7 +150,6 @@ embedder:
 store:
   backend: gob
 `,
-			expectedPythonPath: "python3",
 			expectedDimensions: 768,
 		},
 	}
@@ -194,10 +170,6 @@ store:
 			loaded, err := Load(tmpDir)
 			if err != nil {
 				t.Fatalf("failed to load config: %v", err)
-			}
-
-			if loaded.Embedder.PythonPath != tt.expectedPythonPath {
-				t.Errorf("expected python_path %s, got %s", tt.expectedPythonPath, loaded.Embedder.PythonPath)
 			}
 
 			if loaded.Embedder.Dimensions != tt.expectedDimensions {

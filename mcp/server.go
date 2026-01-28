@@ -350,7 +350,11 @@ func (s *Server) handleWorkspaceSearch(ctx context.Context, query string, limit 
 
 // createWorkspaceEmbedder creates an embedder based on workspace configuration.
 func (s *Server) createWorkspaceEmbedder(ws *config.Workspace) (embedder.Embedder, error) {
-	return embedder.NewE5Embedder(ws.Embedder.ModelPath, ws.Embedder.PythonPath)
+	venvDir := config.GetVenvDir(s.projectRoot)
+	if len(ws.Projects) > 0 {
+		venvDir = config.GetVenvDir(ws.Projects[0].Path)
+	}
+	return embedder.NewE5Embedder(ws.Embedder.ModelPath, venvDir)
 }
 
 // createWorkspaceStore creates a vector store based on workspace configuration.
@@ -681,7 +685,7 @@ func (s *Server) handleIndexStatus(ctx context.Context, _ mcp.CallToolRequest) (
 
 // createEmbedder creates an embedder based on configuration.
 func (s *Server) createEmbedder(cfg *config.Config) (embedder.Embedder, error) {
-	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, cfg.Embedder.PythonPath)
+	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir(s.projectRoot))
 }
 
 // createStore creates a vector store based on configuration.

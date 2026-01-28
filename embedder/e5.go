@@ -30,7 +30,9 @@ type E5Embedder struct {
 }
 
 // NewE5Embedder spawns the Python E5 worker process.
-func NewE5Embedder(modelPath, pythonPath string) (*E5Embedder, error) {
+// venvDir est le répertoire du venv Python (.grepai/venv).
+func NewE5Embedder(modelPath, venvDir string) (*E5Embedder, error) {
+	pythonPath := VenvPythonPath(venvDir)
 	tmp, err := os.CreateTemp("", "e5_worker_*.py")
 	if err != nil {
 		return nil, fmt.Errorf("create temp worker script: %w", err)
