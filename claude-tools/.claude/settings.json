@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/schemas/settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "bash",
+        "command": ".claude/hooks/force-grepai.sh",
+        "description": "Force grepai instead of grep/find/rg"
+      },
+      {
+        "matcher": "glob",
+        "command": ".claude/hooks/force-grepai.sh",
+        "description": "Force grepai instead of glob"
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(grepai:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(ls:*)",
+      "Bash(pwd)",
+      "Bash(echo:*)"
+    ],
+    "deny": []
+  }
+}

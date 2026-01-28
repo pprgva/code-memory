@@ -505,7 +505,58 @@ type SetupQuestion struct {
 
 ---
 
-## 9. Ignorer tous les dotfiles/dotfolders par défaut
+## 9. UUID Projet comme Source de Vérité
+
+**Problème** : Si on renomme ou déplace un projet, comment savoir que c'est le même ? Le nom et le chemin peuvent changer.
+
+**Solution** : Un UUID généré à la création du projet qui **fait foi**.
+
+### Concept
+```yaml
+# .grepai/config.yaml (fichier local)
+project_id: "550e8400-e29b-41d4-a716-446655440000"
+name: "whisperclip"  # peut changer
+```
+
+```sql
+-- PostgreSQL
+grepai_projects.id = "550e8400-e29b-41d4-a716-446655440000"
+grepai_projects.name = "whisperclip"  -- peut changer
+grepai_projects.local_path = "~/Documents/..."  -- peut changer
+```
+
+### L'UUID fait foi
+- **Renommage** : Le dossier s'appelle maintenant "whisper-v2" → L'UUID reste, on sait que c'est le même projet
+- **Déplacement** : Le projet est dans un autre dossier → L'UUID reste
+- **Synchronisation** : Claude vérifie `local UUID == base UUID` → Match = même projet
+- **Conflit** : Deux dossiers avec le même nom mais UUID différents → Ce sont deux projets distincts
+
+### Workflow
+```
+1. grepai setup --auto
+   → Génère UUID: "550e8400-..."
+   → Écrit dans .grepai/config.yaml
+   → Crée en base avec cet UUID
+
+2. Utilisateur déplace le projet
+   → Le chemin change
+   → L'UUID dans .grepai/config.yaml reste
+
+3. grepai search (dans le nouveau chemin)
+   → Lit l'UUID local
+   → Trouve le projet en base par UUID
+   → Met à jour le chemin en base si différent
+   → Fonctionne normalement
+```
+
+### Avantages
+- **Découplage total** : L'identité du projet ne dépend plus du chemin
+- **Robustesse** : Pas de confusion même avec des noms identiques
+- **Auto-réparation** : Le chemin en base se met à jour automatiquement
+
+---
+
+## 10. Ignorer tous les dotfiles/dotfolders par défaut
 
 **Problème** : La liste d'ignore est longue et explicite. Les dossiers/fichiers commençant par `.` sont presque toujours des configs, caches, ou données non pertinentes.
 
