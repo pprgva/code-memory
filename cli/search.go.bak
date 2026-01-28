@@ -171,9 +171,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-	// Display timing hint
-	displaySearchTiming(elapsed, usedSocket)
-
 // outputSearchJSON outputs results in JSON format for AI agents
 func outputSearchJSON(results []store.SearchResult) error {
 	jsonResults := make([]SearchResultJSON, len(results))

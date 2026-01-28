@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -215,7 +216,24 @@ func (s *GOBSymbolStore) LookupCallers(ctx context.Context, symbolName string) (
 			deduped = append(deduped, ref)
 		}
 	}
-	return deduped, nil
+
+	// Filter false positives
+	var finalRefs []Reference
+	for _, ref := range deduped {
+		// Skip self-references (definition line)
+		if ref.CallerName == symbolName && ref.CallerLine == ref.Line {
+			continue
+		}
+		// Skip interface declarations
+		if ref.CallerName == "<top-level>" {
+			trimmed := strings.TrimSpace(ref.Context)
+			if strings.HasPrefix(trimmed, symbolName+"(") && !strings.Contains(trimmed, "=") {
+				continue
+			}
+		}
+		finalRefs = append(finalRefs, ref)
+	}
+	return finalRefs, nil
 }
 
 // LookupCallees finds all symbols called by a function.

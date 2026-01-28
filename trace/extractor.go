@@ -439,7 +439,7 @@ func getIndentation(line string) int {
 func findContainingFunction(pos int, boundaries []functionBoundary) functionBoundary {
 	var best functionBoundary
 	for _, b := range boundaries {
-		if b.StartPos <= pos && pos < b.EndPos {
+		if b.StartPos < pos && pos < b.EndPos {
 			if b.StartPos > best.StartPos {
 				best = b
 			}
