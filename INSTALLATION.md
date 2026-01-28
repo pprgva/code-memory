@@ -66,7 +66,7 @@ Ce que ça fait :
 - Crée le dossier `.grepai/` avec le fichier `config.yaml`
 - Crée un environnement Python virtuel dans `.grepai/venv/`
 - Installe automatiquement `torch` et `transformers` dans le venv
-- Télécharge le modèle `intfloat/multilingual-e5-large` dans `~/.local/share/grepai/models/` (une seule fois, partagé entre tous les projets)
+- Télécharge le modèle `intfloat/multilingual-e5-large` dans `~/.grepai/models/` (une seule fois, partagé entre tous les projets)
 - Ajoute `.grepai/` au `.gitignore` si présent
 
 Le `--yes` évite les questions interactives. Sans ce flag, l'outil te demande le backend de stockage.
