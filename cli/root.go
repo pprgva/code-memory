@@ -44,10 +44,14 @@ func init() {
 	rootCmd.AddCommand(agentSetupCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(projectCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(newProjectCmd)
 	rootCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(removeCmd)
+	rootCmd.AddCommand(machineCmd)
+	rootCmd.AddCommand(statusAllCmd)
+	rootCmd.AddCommand(upgradeAllCmd)
 }
 
 var versionCmd = &cobra.Command{

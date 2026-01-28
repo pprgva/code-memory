@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"embed"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -11,6 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 type PostgresStore struct {
 	pool       *pgxpool.Pool
@@ -368,4 +373,122 @@ BEGIN
 	END IF;
 END$$;
 `, dim, dim, dim, dim)
+}
+
+// Pool returns the underlying connection pool for use by other stores.
+func (s *PostgresStore) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
+// RunMigrations executes all pending SQL migrations in order.
+// Migrations are embedded from the migrations/ directory.
+func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+	// Ensure migrations tracking table exists
+	_, err := pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS grepai_migrations (
+			version INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TIMESTAMPTZ DEFAULT NOW()
+		)`)
+	if err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// Get list of applied migrations
+	rows, err := pool.Query(ctx, `SELECT version FROM grepai_migrations`)
+	if err != nil {
+		return fmt.Errorf("failed to query migrations: %w", err)
+	}
+	defer rows.Close()
+
+	applied := make(map[int]bool)
+	for rows.Next() {
+		var version int
+		if err := rows.Scan(&version); err != nil {
+			return fmt.Errorf("failed to scan migration version: %w", err)
+		}
+		applied[version] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate migrations: %w", err)
+	}
+
+	// Read migration files from embedded filesystem
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		return fmt.Errorf("failed to read migrations directory: %w", err)
+	}
+
+	// Sort migration files by name to ensure order
+	var migrationFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			migrationFiles = append(migrationFiles, entry.Name())
+		}
+	}
+	sort.Strings(migrationFiles)
+
+	// Execute pending migrations
+	for _, filename := range migrationFiles {
+		// Extract version number from filename (e.g., "001_projects.sql" -> 1)
+		var version int
+		if _, err := fmt.Sscanf(filename, "%03d_", &version); err != nil {
+			continue // Skip files that don't match the pattern
+		}
+
+		if applied[version] {
+			continue // Skip already applied migrations
+		}
+
+		// Read and execute migration
+		content, err := migrationsFS.ReadFile("migrations/" + filename)
+		if err != nil {
+			return fmt.Errorf("failed to read migration %s: %w", filename, err)
+		}
+
+		// Execute migration in a transaction
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for migration %s: %w", filename, err)
+		}
+
+		_, err = tx.Exec(ctx, string(content))
+		if err != nil {
+			tx.Rollback(ctx)
+			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit migration %s: %w", filename, err)
+		}
+	}
+
+	return nil
+}
+
+// NewPostgresStoreWithMigrations creates a PostgresStore and runs all pending migrations.
+func NewPostgresStoreWithMigrations(ctx context.Context, dsn string, projectID string, vectorDimensions int) (*PostgresStore, error) {
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+
+	// Run migrations first
+	if err := RunMigrations(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	store := &PostgresStore{
+		pool:       pool,
+		projectID:  projectID,
+		dimensions: vectorDimensions,
+	}
+
+	if err := store.ensureSchema(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+
+	return store, nil
 }

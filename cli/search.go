@@ -25,6 +25,7 @@ var (
 	searchGlobs     []string
 	searchSince     string
 	searchModified  string
+	searchAll       bool
 )
 
 // SearchResultJSON is a lightweight struct for JSON output (excludes vector, hash, updated_at)
@@ -42,6 +43,24 @@ type SearchResultCompactJSON struct {
 	StartLine int     `json:"start_line"`
 	EndLine   int     `json:"end_line"`
 	Score     float32 `json:"score"`
+}
+
+// FederatedResultJSON is a struct for federated search JSON output
+type FederatedResultJSON struct {
+	ProjectName string  `json:"project_name"`
+	ProjectPath string  `json:"project_path"`
+	FilePath    string  `json:"file_path"`
+	StartLine   int     `json:"start_line"`
+	EndLine     int     `json:"end_line"`
+	Score       float32 `json:"score"`
+	Content     string  `json:"content,omitempty"`
+}
+
+// FederatedSearchResponse is the JSON response for federated search
+type FederatedSearchResponse struct {
+	Results          []FederatedResultJSON `json:"results"`
+	Query            string                `json:"query"`
+	ProjectsSearched []string              `json:"projects_searched"`
 }
 
 var searchCmd = &cobra.Command{
@@ -62,11 +81,12 @@ func init() {
 	searchCmd.Flags().BoolVarP(&searchJSON, "json", "j", false, "Output results in JSON format (for AI agents)")
 	searchCmd.Flags().BoolVarP(&searchCompact, "compact", "c", false, "Output minimal JSON without content (requires --json)")
 	searchCmd.Flags().StringVar(&searchWorkspace, "workspace", "", "Workspace name for cross-project search")
-	searchCmd.Flags().StringArrayVar(&searchProjects, "project", nil, "Project name(s) to search (requires --workspace, can be repeated)")
+	searchCmd.Flags().StringArrayVar(&searchProjects, "project", nil, "Project name(s) to search (can be repeated, use with --workspace or --all)")
 	searchCmd.Flags().StringSliceVar(&searchTypes, "type", nil, "Filter by file type (e.g., ts, go, vue)")
 	searchCmd.Flags().StringSliceVarP(&searchGlobs, "glob", "g", nil, "Filter by glob pattern (e.g., 'src/**/*')")
 	searchCmd.Flags().StringVar(&searchSince, "since", "", "Filter files modified since git ref (e.g., main, HEAD~10)")
 	searchCmd.Flags().StringVar(&searchModified, "modified", "", "Filter files modified within duration (e.g., 7d, 2h, 30m)")
+	searchCmd.Flags().BoolVar(&searchAll, "all", false, "Search all registered projects (federated search)")
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
@@ -79,8 +99,13 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate workspace-related flags
-	if len(searchProjects) > 0 && searchWorkspace == "" {
-		return fmt.Errorf("--project flag requires --workspace flag")
+	if len(searchProjects) > 0 && searchWorkspace == "" && !searchAll {
+		return fmt.Errorf("--project flag requires --workspace or --all flag")
+	}
+
+	// Federated search mode (--all or --project without --workspace)
+	if searchAll || (len(searchProjects) > 0 && searchWorkspace == "") {
+		return runFederatedSearch(ctx, query)
 	}
 
 	// Workspace mode
@@ -313,6 +338,151 @@ func SearchJSON(projectRoot string, query string, limit int) ([]store.SearchResu
 func init() {
 	// Ensure the search command is registered
 	_ = os.Getenv("GREPAI_DEBUG")
+}
+
+// runFederatedSearch handles federated search across all registered projects
+func runFederatedSearch(ctx context.Context, query string) error {
+	// Record start time
+	startTime := time.Now()
+
+	// Load projects config to get list of projects
+	projectsCfg, err := config.LoadProjectsConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load projects config: %w", err)
+	}
+
+	// Determine which projects to search
+	var projectsToSearch []string
+	if len(searchProjects) > 0 {
+		projectsToSearch = searchProjects
+	} else {
+		projectsToSearch = projectsCfg.ListProjects()
+	}
+
+	if len(projectsToSearch) == 0 {
+		fmt.Println("No projects registered. Use 'grepai project add' to register projects.")
+		return nil
+	}
+
+	// Initialize embedder using machine config if available
+	var emb embedder.Embedder
+	if machineCfg, err := config.LoadMachineConfig(); err == nil && machineCfg.Embedder.ModelPath != "" {
+		cfg := &config.Config{Embedder: config.EmbedderConfig{ModelPath: machineCfg.Embedder.ModelPath}}
+		emb, err = initializeEmbedder(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize embedder: %w", err)
+		}
+	} else {
+		// Try to load embedder from first available project
+		for _, projectName := range projectsToSearch {
+			project, err := projectsCfg.GetProject(projectName)
+			if err != nil {
+				continue
+			}
+			absPath := config.ExpandPath(project.Path)
+			if config.Exists(absPath) {
+				if cfg, err := config.Load(absPath); err == nil {
+					emb, err = initializeEmbedder(cfg)
+					if err == nil {
+						break
+					}
+				}
+			}
+		}
+		if emb == nil {
+			return fmt.Errorf("failed to initialize embedder: no valid project configuration found")
+		}
+	}
+	defer emb.Close()
+
+	// Detect if socket was used
+	_, usedSocket := emb.(*embedder.SocketEmbedder)
+
+	// Create federated searcher
+	fedSearcher := search.NewFederatedSearcher(emb)
+
+	// Search
+	results, err := fedSearcher.Search(ctx, projectsToSearch, query, searchLimit)
+	if err != nil {
+		if searchJSON {
+			return outputSearchError(err)
+		}
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	// Calculate elapsed time
+	elapsed := time.Since(startTime)
+
+	// JSON output mode
+	if searchJSON {
+		return outputFederatedSearchJSON(results, query, projectsToSearch)
+	}
+
+	if len(results) == 0 {
+		fmt.Println("No results found.")
+		displaySearchTiming(elapsed, usedSocket)
+		return nil
+	}
+
+	// Display results
+	fmt.Printf("Found %d results for: %q across %d projects\n\n", len(results), query, len(projectsToSearch))
+
+	for i, result := range results {
+		fmt.Printf("--- Result %d (score: %.4f) ---\n", i+1, result.Score)
+		fmt.Printf("Project: %s\n", result.ProjectName)
+		fmt.Printf("File: %s:%d-%d\n", result.Chunk.FilePath, result.Chunk.StartLine, result.Chunk.EndLine)
+		fmt.Println()
+
+		// Display content with line numbers
+		lines := strings.Split(result.Chunk.Content, "\n")
+		startIdx := 0
+		if len(lines) > 0 && strings.HasPrefix(lines[0], "File: ") {
+			startIdx = 2
+		}
+
+		lineNum := result.Chunk.StartLine
+		for j := startIdx; j < len(lines) && j < startIdx+15; j++ {
+			fmt.Printf("%4d | %s\n", lineNum, lines[j])
+			lineNum++
+		}
+		if len(lines)-startIdx > 15 {
+			fmt.Printf("     | ... (%d more lines)\n", len(lines)-startIdx-15)
+		}
+		fmt.Println()
+	}
+
+	// Display timing hint
+	displaySearchTiming(elapsed, usedSocket)
+
+	return nil
+}
+
+// outputFederatedSearchJSON outputs federated search results in JSON format
+func outputFederatedSearchJSON(results []search.FederatedResult, query string, projects []string) error {
+	jsonResults := make([]FederatedResultJSON, len(results))
+	for i, r := range results {
+		jsonResults[i] = FederatedResultJSON{
+			ProjectName: r.ProjectName,
+			ProjectPath: r.ProjectPath,
+			FilePath:    r.Chunk.FilePath,
+			StartLine:   r.Chunk.StartLine,
+			EndLine:     r.Chunk.EndLine,
+			Score:       r.Score,
+		}
+		if !searchCompact {
+			jsonResults[i].Content = r.Chunk.Content
+		}
+	}
+
+	response := FederatedSearchResponse{
+		Results:          jsonResults,
+		Query:            query,
+		ProjectsSearched: projects,
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(response)
 }
 
 // runWorkspaceSearch handles workspace-level search operations

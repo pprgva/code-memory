@@ -167,98 +167,44 @@ func DefaultConfig() *Config {
 			CheckOnStartup: false, // Opt-in by default for privacy
 		},
 		Ignore: []string{
-			// VCS
-			".git",
-			".svn",
-			".hg",
+			// Tous les fichiers/dossiers commençant par un point
+			// (inclut .git, .vscode, .idea, .env, .cache, etc.)
+			".*",
 
-			// Outil grepai
-			".grepai",
-			"qdrant_storage",
-
-			// IDE / éditeurs
-			".idea",
-			".vscode",
-			".vs",
-			".eclipse",
-			".settings",
-
-			// JavaScript / TypeScript
+			// Dépendances
 			"node_modules",
-			".next",
-			".nuxt",
-			".output",
-			".svelte-kit",
 			"bower_components",
+			"vendor",
+			"Pods",
+			"packages",
 
-			// Build / output génériques
+			// Build / output
 			"build",
 			"out",
 			"dist",
 			"bin",
 			"obj",
-			"coverage",
-			".cache",
-
-			// Python
-			"__pycache__",
-			".venv",
-			"venv",
-			".tox",
-			".mypy_cache",
-			".pytest_cache",
-			".ruff_cache",
-			"*.egg-info",
-
-			// Go
-			"vendor",
-
-			// Rust
 			"target",
-
-			// Zig
-			".zig-cache",
+			"coverage",
 			"zig-out",
-
-			// Java / Kotlin
-			".gradle",
-			".m2",
-
-			// .NET / C#
-			"packages",
-
-			// PHP / Symfony / Laravel
-			"var",
-
-			// iOS / macOS
-			"Pods",
 			"DerivedData",
-			".build",
-			".swiftpm",
 
-			// Dart / Flutter
-			".dart_tool",
-			".pub-cache",
-
-			// Infra / DevOps
-			".terraform",
-			".vagrant",
-
-			// AI agent config
-			".claude",
-			"CLAUDE.md",
-			"AGENTS.md",
-			"GEMINI.md",
-			".cursorrules",
-			".cursor",
-			".windsurfrules",
-
-			// Divers
-			".DS_Store",
-			"Thumbs.db",
+			// Cache / temp
+			"__pycache__",
+			"venv",
+			"*.egg-info",
 			"tmp",
 			"temp",
 			"logs",
+			"var",
+
+			// Stockage grepai
+			"qdrant_storage",
+
+			// AI agent config (non-dotfiles)
+			"CLAUDE.md",
+			"AGENTS.md",
+			"GEMINI.md",
 		},
 	}
 }

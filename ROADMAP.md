@@ -455,8 +455,79 @@ CREATE TABLE grepai_index_events (
 
 ---
 
+## 8. Mode interactif Claude-first
+
+**Problème** : Actuellement, soit l'app pose des questions à l'humain (friction), soit elle fait tout en auto (mais rate des infos que Claude connaît).
+
+**Solution** : L'app retourne une liste de questions, Claude répond à ce qu'il sait, et demande à l'humain le reste.
+
+### Flux
+```
+1. Claude: grepai setup --interactive-json
+
+2. grepai retourne:
+{
+  "questions": [
+    {"id": "backend", "question": "Quel backend ?", "options": ["gob", "postgres"]},
+    {"id": "dsn", "question": "DSN PostgreSQL ?", "depends_on": "backend=postgres"},
+    {"id": "name", "question": "Nom du projet ?", "default": "code-memory"}
+  ]
+}
+
+3. Claude analyse:
+   - "Backend ?" → Je sais: postgres (Supabase)
+   - "DSN ?" → Je check machine.yaml → existe → j'utilise
+   - "Nom ?" → Je déduis du dossier
+
+4. Claude: grepai setup --answers '{"backend":"postgres","dsn":"...","name":"code-memory"}'
+```
+
+### Avantages
+- **Claude répond intelligemment** aux questions qu'il connaît
+- **L'humain n'est sollicité** que pour ce que Claude ne sait pas
+- **L'app reste simple** : elle expose ses besoins, Claude gère l'intelligence
+
+### Implémentation
+```go
+// grepai setup --interactive-json
+type SetupQuestion struct {
+    ID        string   `json:"id"`
+    Question  string   `json:"question"`
+    Type      string   `json:"type"`      // text, choice, bool
+    Options   []string `json:"options,omitempty"`
+    Default   string   `json:"default,omitempty"`
+    DependsOn string   `json:"depends_on,omitempty"` // "backend=postgres"
+    Hint      string   `json:"hint,omitempty"`
+}
+
+// grepai setup --answers '{"key":"value",...}'
+```
+
+---
+
+## 9. Ignorer tous les dotfiles/dotfolders par défaut
+
+**Problème** : La liste d'ignore est longue et explicite. Les dossiers/fichiers commençant par `.` sont presque toujours des configs, caches, ou données non pertinentes.
+
+**Solution** : Ajouter une règle générique pour ignorer tous les `.*`
+
+### Avantages
+- Plus simple à maintenir
+- Les utilisateurs peuvent créer `.notes/`, `.docs/`, `.private/` pour leurs données non indexées
+- Pas besoin de lister chaque `.xxx` individuellement
+
+### Exceptions possibles
+- `.github/` → Workflows CI (peut être utile parfois)
+- Configurable via `.grepai/config.yaml` si besoin
+
+### Implémentation
+Dans `config/config.go`, la liste `Ignore` par défaut inclura `".*"` en premier.
+
+---
+
 ## Notes de discussion
 
 (Espace pour capturer les décisions et contexte des discussions)
 
 - 2026-01-28 : Discussion initiale sur cross-projet et aide intégrée
+- 2026-01-28 : Décision d'ignorer tous les dotfiles par défaut (exemple : mettre ROADMAP.md dans `.notes/`)
