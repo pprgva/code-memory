@@ -1,5 +1,8 @@
--- Migration 001: Projects as central entity
--- This migration creates the projects and files tables for multi-project support.
+-- Migration 001: Core schema with projects as central entity
+-- This migration creates all core tables for grepai.
+
+-- Enable vector extension
+CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Projects table (central entity)
 CREATE TABLE IF NOT EXISTS grepai_projects (
@@ -32,12 +35,37 @@ CREATE TABLE IF NOT EXISTS grepai_files (
     UNIQUE(project_id, relative_path)
 );
 
+-- Chunks table (code chunks with embeddings)
+CREATE TABLE IF NOT EXISTS grepai_chunks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    vector vector(1024),
+    hash TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+-- Documents table (file metadata)
+CREATE TABLE IF NOT EXISTS grepai_documents (
+    path TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    hash TEXT NOT NULL,
+    mod_time TIMESTAMP NOT NULL,
+    chunk_ids TEXT[] NOT NULL,
+    PRIMARY KEY (project_id, path)
+);
+
 -- Indexes for efficient lookups
 CREATE INDEX IF NOT EXISTS idx_projects_name ON grepai_projects(name);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON grepai_projects(index_status);
 CREATE INDEX IF NOT EXISTS idx_files_project ON grepai_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_path ON grepai_files(project_id, relative_path);
 CREATE INDEX IF NOT EXISTS idx_files_language ON grepai_files(language);
+CREATE INDEX IF NOT EXISTS idx_grepai_chunks_project ON grepai_chunks(project_id);
+CREATE INDEX IF NOT EXISTS idx_grepai_chunks_file ON grepai_chunks(project_id, file_path);
 
 -- Migration tracking table
 CREATE TABLE IF NOT EXISTS grepai_migrations (

@@ -271,7 +271,11 @@ func initializeStore(ctx context.Context, cfg *config.Config, projectRoot string
 		}
 		return gobStore, nil
 	case "postgres":
-		return store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, cfg.Embedder.Dimensions)
+		projectID, err := ensureProjectID(ctx, cfg, projectRoot)
+		if err != nil {
+			return nil, err
+		}
+		return store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectID, cfg.Embedder.Dimensions)
 	case "qdrant":
 		collectionName := cfg.Store.Qdrant.Collection
 		if collectionName == "" {
@@ -281,6 +285,49 @@ func initializeStore(ctx context.Context, cfg *config.Config, projectRoot string
 	default:
 		return nil, fmt.Errorf("unknown storage backend: %s", cfg.Store.Backend)
 	}
+}
+
+// ensureProjectID retrieves or creates a project UUID for Postgres backend.
+// If the config already has a ProjectID, it returns it directly.
+// Otherwise, it generates a new UUID, registers the project in the database,
+// and saves the ProjectID to the local config.
+func ensureProjectID(ctx context.Context, cfg *config.Config, projectRoot string) (string, error) {
+	if cfg.ProjectID != "" {
+		return cfg.ProjectID, nil
+	}
+
+	// Derive project name from directory name if not set
+	projectName := cfg.ProjectName
+	if projectName == "" {
+		projectName = filepath.Base(projectRoot)
+	}
+
+	// Create a temporary connection to register the project
+	pool, err := store.NewPostgresPool(ctx, cfg.Store.Postgres.DSN)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+	defer pool.Close()
+
+	// Run migrations to ensure grepai_projects table exists
+	if err := store.RunMigrations(ctx, pool); err != nil {
+		return "", fmt.Errorf("failed to run migrations: %w", err)
+	}
+
+	// Get or create the project in the database
+	projectID, err := store.GetOrCreateProjectWithPool(ctx, pool, projectName, projectRoot)
+	if err != nil {
+		return "", fmt.Errorf("failed to register project: %w", err)
+	}
+
+	// Save the ProjectID to local config
+	cfg.ProjectID = projectID
+	cfg.ProjectName = projectName
+	if err := cfg.Save(projectRoot); err != nil {
+		log.Printf("Warning: failed to save project ID to config: %v", err)
+	}
+
+	return projectID, nil
 }
 
 const configWriteThrottle = 30 * time.Second
@@ -529,6 +576,13 @@ func runWatchForeground() error {
 	// Save index after initial scan
 	if err := st.Persist(ctx); err != nil {
 		log.Printf("Warning: failed to persist index: %v", err)
+	}
+
+	// Update project stats in Postgres if applicable
+	if pgStore, ok := st.(*store.PostgresStore); ok && cfg.ProjectID != "" {
+		if err := pgStore.UpdateProjectStats(ctx, cfg.ProjectID); err != nil {
+			log.Printf("Warning: failed to update project stats: %v", err)
+		}
 	}
 
 	// Write ready file to signal successful initialization (background mode only)

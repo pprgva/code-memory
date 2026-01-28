@@ -14,6 +14,7 @@ import (
 	"github.com/pprgva/code-memory/detect"
 	"github.com/pprgva/code-memory/embedder"
 	"github.com/pprgva/code-memory/indexer"
+	"github.com/pprgva/code-memory/store"
 	"github.com/pprgva/code-memory/trace"
 	"github.com/spf13/cobra"
 )
@@ -70,6 +71,7 @@ type SetupResult struct {
 
 // SetupProjectInfo contains project information for JSON output.
 type SetupProjectInfo struct {
+	ID        string   `json:"project_id,omitempty"`
 	Name      string   `json:"name"`
 	Path      string   `json:"path"`
 	Languages []string `json:"languages"`
@@ -254,11 +256,12 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Step 4: Index files
 	var filesIndexed, chunksCreated, symbolCount int
+	var projectUUID string
 	if !setupNoIndex {
 		if !setupJSON && !setupAuto {
 			fmt.Println("\nIndexing project files...")
 		}
-		filesIndexed, chunksCreated, symbolCount, err = runIndexation(cwd, setupJSON || setupAuto)
+		filesIndexed, chunksCreated, symbolCount, projectUUID, err = runSetupIndexation(cwd, projectInfo.Name, setupJSON || setupAuto)
 		if err != nil {
 			return outputSetupError(fmt.Errorf("indexation failed: %w", err))
 		}
@@ -267,6 +270,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	// Output result
 	result := SetupResult{
 		Project: SetupProjectInfo{
+			ID:        projectUUID,
 			Name:      projectInfo.Name,
 			Path:      config.ContractPath(absPath),
 			Languages: projectInfo.Languages,
@@ -322,30 +326,71 @@ func outputSetupError(err error) error {
 	return err
 }
 
-// runIndexation performs the actual indexation and returns stats.
-func runIndexation(projectRoot string, silent bool) (filesIndexed, chunksCreated, symbolCount int, err error) {
+// runSetupIndexation performs indexation with UUID support for setup command.
+// Returns filesIndexed, chunksCreated, symbolCount, projectUUID, and error.
+func runSetupIndexation(projectRoot string, projectName string, silent bool) (filesIndexed, chunksCreated, symbolCount int, projectUUID string, err error) {
 	ctx := context.Background()
 
 	cfg, err := config.Load(projectRoot)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to load config: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Generate or retrieve ProjectID for local config
+	if cfg.ProjectID == "" {
+		cfg.ProjectID = config.GenerateProjectID()
+	}
+	if cfg.ProjectName == "" || cfg.ProjectName != projectName {
+		cfg.ProjectName = projectName
+	}
+	// Save config with ProjectID and ProjectName
+	if err := cfg.Save(projectRoot); err != nil {
+		return 0, 0, 0, "", fmt.Errorf("failed to save config with project ID: %w", err)
 	}
 
 	emb, err := initializeEmbedder(cfg)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, "", err
 	}
 	defer emb.Close()
 
-	st, err := initializeStore(ctx, cfg, projectRoot)
-	if err != nil {
-		return 0, 0, 0, err
+	// For PostgreSQL, use GetOrCreateProject to get/create UUID in database
+	absPath, _ := filepath.Abs(projectRoot)
+	var st store.VectorStore
+	var pgStore *store.PostgresStore
+
+	if cfg.Store.Backend == "postgres" {
+		// First connection to get/create project UUID
+		pgStore, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, "", cfg.Embedder.Dimensions)
+		if err != nil {
+			return 0, 0, 0, "", err
+		}
+		projectUUID, err = pgStore.GetOrCreateProject(ctx, projectName, absPath)
+		if err != nil {
+			pgStore.Close()
+			return 0, 0, 0, "", fmt.Errorf("failed to get/create project in database: %w", err)
+		}
+		pgStore.Close()
+
+		// Reconnect with the correct project UUID
+		pgStore, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectUUID, cfg.Embedder.Dimensions)
+		if err != nil {
+			return 0, 0, 0, "", err
+		}
+		st = pgStore
+	} else {
+		st, err = initializeStore(ctx, cfg, projectRoot)
+		if err != nil {
+			return 0, 0, 0, "", err
+		}
+		// For non-postgres backends, use the local ProjectID
+		projectUUID = cfg.ProjectID
 	}
 	defer st.Close()
 
 	ignoreMatcher, err := indexer.NewIgnoreMatcher(projectRoot, cfg.Ignore, cfg.ExternalGitignore)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to initialize ignore matcher: %w", err)
+		return 0, 0, 0, "", fmt.Errorf("failed to initialize ignore matcher: %w", err)
 	}
 
 	scanner := indexer.NewScanner(projectRoot, ignoreMatcher)
@@ -367,11 +412,18 @@ func runIndexation(projectRoot string, silent bool) (filesIndexed, chunksCreated
 		fmt.Print("\r" + strings.Repeat(" ", 80) + "\r")
 	}
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, "", err
 	}
 
 	if err := st.Persist(ctx); err != nil {
 		log.Printf("Warning: failed to persist index: %v", err)
+	}
+
+	// Update project stats for PostgreSQL
+	if pgStore != nil {
+		if err := pgStore.UpdateProjectStats(ctx, projectUUID); err != nil {
+			log.Printf("Warning: failed to update project stats: %v", err)
+		}
 	}
 
 	// Build symbol index
@@ -419,5 +471,19 @@ func runIndexation(projectRoot string, silent bool) (filesIndexed, chunksCreated
 		log.Printf("Warning: failed to save config: %v", err)
 	}
 
-	return stats.FilesIndexed, stats.ChunksCreated, symbolCount, nil
+	return stats.FilesIndexed, stats.ChunksCreated, symbolCount, projectUUID, nil
+}
+
+// runIndexation is a backward-compatible wrapper for runSetupIndexation.
+// Used by refresh command which doesn't need projectName or UUID.
+func runIndexation(projectRoot string, silent bool) (filesIndexed, chunksCreated, symbolCount int, err error) {
+	// Load config to get project name
+	cfg, loadErr := config.Load(projectRoot)
+	projectName := ""
+	if loadErr == nil && cfg.ProjectName != "" {
+		projectName = cfg.ProjectName
+	}
+
+	filesIndexed, chunksCreated, symbolCount, _, err = runSetupIndexation(projectRoot, projectName, silent)
+	return filesIndexed, chunksCreated, symbolCount, err
 }

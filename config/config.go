@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,6 +19,8 @@ const (
 
 type Config struct {
 	Version           int            `yaml:"version"`
+	ProjectID         string         `yaml:"project_id,omitempty"`
+	ProjectName       string         `yaml:"project_name,omitempty"`
 	Embedder          EmbedderConfig `yaml:"embedder"`
 	Store             StoreConfig    `yaml:"store"`
 	Chunking          ChunkingConfig `yaml:"chunking"`
@@ -207,6 +210,11 @@ func DefaultConfig() *Config {
 			"GEMINI.md",
 		},
 	}
+}
+
+// GenerateProjectID generates a new UUID v4 for project identification
+func GenerateProjectID() string {
+	return uuid.New().String()
 }
 
 func GetConfigDir(projectRoot string) string {

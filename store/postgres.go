@@ -23,15 +23,21 @@ type PostgresStore struct {
 	dimensions int
 }
 
-func NewPostgresStore(ctx context.Context, dsn string, projectID string, vectorDimensions int) (*PostgresStore, error) {
+func NewPostgresStore(ctx context.Context, dsn string, projectUUID string, vectorDimensions int) (*PostgresStore, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
 	}
 
+	// Run migrations first
+	if err := RunMigrations(ctx, pool); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
+	}
+
 	store := &PostgresStore{
 		pool:       pool,
-		projectID:  projectID,
+		projectID:  projectUUID,
 		dimensions: vectorDimensions,
 	}
 
@@ -44,36 +50,14 @@ func NewPostgresStore(ctx context.Context, dsn string, projectID string, vectorD
 }
 
 func (s *PostgresStore) ensureSchema(ctx context.Context) error {
-	queries := []string{
-		`CREATE EXTENSION IF NOT EXISTS vector`,
-		`CREATE TABLE IF NOT EXISTS grepai_chunks (
-			id TEXT PRIMARY KEY,
-			project_id TEXT NOT NULL,
-			file_path TEXT NOT NULL,
-			start_line INTEGER NOT NULL,
-			end_line INTEGER NOT NULL,
-			content TEXT NOT NULL,
-			vector vector(768),
-			hash TEXT NOT NULL,
-			updated_at TIMESTAMP NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_grepai_chunks_project ON grepai_chunks(project_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_grepai_chunks_file ON grepai_chunks(project_id, file_path)`,
-		`CREATE TABLE IF NOT EXISTS grepai_documents (
-			path TEXT NOT NULL,
-			project_id TEXT NOT NULL,
-			hash TEXT NOT NULL,
-			mod_time TIMESTAMP NOT NULL,
-			chunk_ids TEXT[] NOT NULL,
-			PRIMARY KEY (project_id, path)
-		)`,
-		buildEnsureVectorSQL(s.dimensions),
+	// Create vector extension (required for pgvector)
+	if _, err := s.pool.Exec(ctx, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		return fmt.Errorf("failed to create vector extension: %w", err)
 	}
 
-	for _, query := range queries {
-		if _, err := s.pool.Exec(ctx, query); err != nil {
-			return fmt.Errorf("failed to execute schema query: %w", err)
-		}
+	// Adjust vector dimension if needed (tables are created by migrations)
+	if _, err := s.pool.Exec(ctx, buildEnsureVectorSQL(s.dimensions)); err != nil {
+		return fmt.Errorf("failed to adjust vector dimension: %w", err)
 	}
 
 	return nil
@@ -380,6 +364,118 @@ func (s *PostgresStore) Pool() *pgxpool.Pool {
 	return s.pool
 }
 
+// NewPostgresPool creates a new connection pool without initializing a full store.
+// This is useful for operations that need database access before store creation.
+func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
+	}
+	return pool, nil
+}
+
+// GetOrCreateProjectWithPool finds or creates a project using a raw pool connection.
+// This is useful when you need to register a project before creating a PostgresStore.
+func GetOrCreateProjectWithPool(ctx context.Context, pool *pgxpool.Pool, name string, localPath string) (string, error) {
+	var projectUUID string
+	var existingPath *string
+
+	err := pool.QueryRow(ctx,
+		`SELECT id, local_path FROM grepai_projects WHERE name = $1`,
+		name,
+	).Scan(&projectUUID, &existingPath)
+
+	if err == pgx.ErrNoRows {
+		err = pool.QueryRow(ctx,
+			`INSERT INTO grepai_projects (name, local_path, index_status)
+			VALUES ($1, $2, 'pending')
+			RETURNING id`,
+			name, localPath,
+		).Scan(&projectUUID)
+		if err != nil {
+			return "", fmt.Errorf("failed to create project: %w", err)
+		}
+		return projectUUID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to query project: %w", err)
+	}
+
+	if existingPath == nil || *existingPath != localPath {
+		_, err = pool.Exec(ctx,
+			`UPDATE grepai_projects SET local_path = $1, updated_at = NOW() WHERE id = $2`,
+			localPath, projectUUID,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to update project path: %w", err)
+		}
+	}
+
+	return projectUUID, nil
+}
+
+// GetOrCreateProject finds a project by name or creates it if not found.
+// If the project exists but local_path differs, it updates the path.
+// Returns the project UUID.
+func (s *PostgresStore) GetOrCreateProject(ctx context.Context, name string, localPath string) (string, error) {
+	var projectUUID string
+	var existingPath *string
+
+	// Try to find existing project by name
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, local_path FROM grepai_projects WHERE name = $1`,
+		name,
+	).Scan(&projectUUID, &existingPath)
+
+	if err == pgx.ErrNoRows {
+		// Project doesn't exist, create it
+		err = s.pool.QueryRow(ctx,
+			`INSERT INTO grepai_projects (name, local_path, index_status)
+			VALUES ($1, $2, 'pending')
+			RETURNING id`,
+			name, localPath,
+		).Scan(&projectUUID)
+		if err != nil {
+			return "", fmt.Errorf("failed to create project: %w", err)
+		}
+		return projectUUID, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to query project: %w", err)
+	}
+
+	// Project exists, update local_path if different
+	if existingPath == nil || *existingPath != localPath {
+		_, err = s.pool.Exec(ctx,
+			`UPDATE grepai_projects SET local_path = $1, updated_at = NOW() WHERE id = $2`,
+			localPath, projectUUID,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to update project path: %w", err)
+		}
+	}
+
+	return projectUUID, nil
+}
+
+// UpdateProjectStats updates file_count and chunk_count for a project.
+func (s *PostgresStore) UpdateProjectStats(ctx context.Context, projectUUID string) error {
+	// Note: grepai_chunks/documents.project_id is TEXT, grepai_projects.id is UUID
+	// So we cast appropriately in the query
+	_, err := s.pool.Exec(ctx, `
+		UPDATE grepai_projects SET
+			file_count = (SELECT COUNT(*) FROM grepai_documents WHERE project_id = $1::text),
+			chunk_count = (SELECT COUNT(*) FROM grepai_chunks WHERE project_id = $1::text),
+			updated_at = NOW()
+		WHERE id = $1::uuid`,
+		projectUUID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update project stats: %w", err)
+	}
+	return nil
+}
+
 // RunMigrations executes all pending SQL migrations in order.
 // Migrations are embedded from the migrations/ directory.
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
@@ -466,29 +562,3 @@ func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// NewPostgresStoreWithMigrations creates a PostgresStore and runs all pending migrations.
-func NewPostgresStoreWithMigrations(ctx context.Context, dsn string, projectID string, vectorDimensions int) (*PostgresStore, error) {
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to postgres: %w", err)
-	}
-
-	// Run migrations first
-	if err := RunMigrations(ctx, pool); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	store := &PostgresStore{
-		pool:       pool,
-		projectID:  projectID,
-		dimensions: vectorDimensions,
-	}
-
-	if err := store.ensureSchema(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-
-	return store, nil
-}
