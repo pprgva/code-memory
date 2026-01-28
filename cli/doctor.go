@@ -205,6 +205,29 @@ func checkEmbedder(ready bool, cfg *config.Config) checkResult {
 	if !ready || cfg == nil {
 		return checkResult{Name: "Embedder", Status: "SKIP", Message: "(requires venv + model)"}
 	}
+
+	// Essayer le socket daemon d'abord
+	socketEmb, socketErr := embedder.NewSocketEmbedder()
+	if socketErr == nil {
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		vec, err := socketEmb.Embed(ctx, "doctor test")
+		socketEmb.Close()
+		if err != nil {
+			return checkResult{Name: "Embedder", Status: "FAIL", Message: fmt.Sprintf("socket embed failed: %v", err)}
+		}
+		elapsed := time.Since(start)
+		expectedDims := cfg.Embedder.Dimensions
+		if expectedDims == 0 {
+			expectedDims = 1024
+		}
+		if len(vec) != expectedDims {
+			return checkResult{Name: "Embedder", Status: "FAIL", Message: fmt.Sprintf("expected %d dims, got %d", expectedDims, len(vec))}
+		}
+		return checkResult{Name: "Embedder", Status: "OK", Message: fmt.Sprintf("daemon socket (%dms)", elapsed.Milliseconds())}
+	}
+
 	modelPath := cfg.Embedder.ModelPath
 	if modelPath == "" {
 		modelPath = embedder.DefaultModelDir()

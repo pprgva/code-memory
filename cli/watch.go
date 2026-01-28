@@ -505,7 +505,7 @@ func runWatchForeground() error {
 	// Use default trace languages if not configured
 	tracedLanguages := cfg.Trace.EnabledLanguages
 	if len(tracedLanguages) == 0 {
-		tracedLanguages = []string{".go", ".js", ".ts", ".jsx", ".tsx", ".py", ".php", ".java", ".cs"}
+		tracedLanguages = []string{".go", ".js", ".ts", ".jsx", ".tsx", ".vue", ".py", ".php", ".java", ".cs"}
 	}
 
 	// Run initial scan and build symbol index
@@ -538,6 +538,20 @@ func runWatchForeground() error {
 				log.Printf("Warning: failed to remove ready file on exit: %v", err)
 			}
 		}()
+	}
+
+	// Start embed socket server so search/doctor can reuse the loaded model
+	sockSrv, err := embedder.NewSocketServer(emb)
+	if err != nil {
+		log.Printf("Warning: could not start embed socket: %v", err)
+	} else {
+		go sockSrv.Serve(ctx)
+		defer sockSrv.Close()
+		if !isBackgroundChild {
+			fmt.Printf("Embed socket: %s\n", embedder.SocketPath())
+		} else {
+			log.Printf("Embed socket: %s", embedder.SocketPath())
+		}
 	}
 
 	// Initialize watcher

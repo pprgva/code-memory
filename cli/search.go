@@ -91,10 +91,17 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize embedder
-	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
-	if err != nil {
-		return fmt.Errorf("failed to initialize embedder: %w", err)
+	// Initialize embedder — try daemon socket first, fallback to local worker
+	var emb embedder.Embedder
+	socketEmb, err := embedder.NewSocketEmbedder()
+	if err == nil {
+		emb = socketEmb
+	} else {
+		localEmb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
+		if err != nil {
+			return fmt.Errorf("failed to initialize embedder: %w", err)
+		}
+		emb = localEmb
 	}
 	defer emb.Close()
 
@@ -236,9 +243,16 @@ func SearchJSON(projectRoot string, query string, limit int) ([]store.SearchResu
 		return nil, err
 	}
 
-	emb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
+	var emb embedder.Embedder
+	socketEmb, err := embedder.NewSocketEmbedder()
+	if err == nil {
+		emb = socketEmb
+	} else {
+		localEmb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize embedder: %w", err)
+		}
+		emb = localEmb
 	}
 	defer emb.Close()
 
@@ -291,10 +305,17 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		return err
 	}
 
-	// Initialize embedder (workspace utilise le premier projet comme racine pour le venv)
-	emb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir())
-	if err != nil {
-		return fmt.Errorf("failed to initialize embedder: %w", err)
+	// Initialize embedder — try daemon socket first
+	var emb embedder.Embedder
+	socketEmb, err := embedder.NewSocketEmbedder()
+	if err == nil {
+		emb = socketEmb
+	} else {
+		localEmb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir())
+		if err != nil {
+			return fmt.Errorf("failed to initialize embedder: %w", err)
+		}
+		emb = localEmb
 	}
 	defer emb.Close()
 

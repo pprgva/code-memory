@@ -7,9 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"log"
+	"path/filepath"
+
 	"github.com/pprgva/code-memory/config"
 	"github.com/pprgva/code-memory/embedder"
 	"github.com/pprgva/code-memory/indexer"
+	"github.com/pprgva/code-memory/trace"
 	"github.com/spf13/cobra"
 )
 
@@ -152,13 +156,54 @@ func runNewProject(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("indexing failed: %w", err)
 	}
 
+	if err := st2.Persist(ctx2); err != nil {
+		fmt.Printf("Warning: failed to persist index: %v\n", err)
+	}
+
+	// Construire l'index de symboles pour trace
+	fmt.Println("Building symbol index...")
+	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(cwd))
+	if err := symbolStore.Load(ctx2); err != nil {
+		log.Printf("Warning: failed to load symbol index: %v", err)
+	}
+	extractor := trace.NewRegexExtractor()
+	tracedLanguages := cfg2.Trace.EnabledLanguages
+	if len(tracedLanguages) == 0 {
+		tracedLanguages = []string{".go", ".js", ".ts", ".jsx", ".tsx", ".vue", ".py", ".php", ".java", ".cs"}
+	}
+	symbolCount := 0
+	files, _, _ := scanner.Scan()
+	for _, file := range files {
+		ext := strings.ToLower(filepath.Ext(file.Path))
+		matched := false
+		for _, lang := range tracedLanguages {
+			if ext == lang {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		symbols, refs, err := extractor.ExtractAll(ctx2, file.Path, file.Content)
+		if err != nil {
+			log.Printf("Warning: failed to extract symbols from %s: %v", file.Path, err)
+			continue
+		}
+		if err := symbolStore.SaveFile(ctx2, file.Path, symbols, refs); err != nil {
+			log.Printf("Warning: failed to save symbols for %s: %v", file.Path, err)
+		}
+		symbolCount += len(symbols)
+	}
+	if err := symbolStore.Persist(ctx2); err != nil {
+		log.Printf("Warning: failed to persist symbol index: %v", err)
+	}
+	symbolStore.Close()
+	fmt.Printf("Symbol index built: %d symbols extracted\n", symbolCount)
+
 	cfg2.Watch.LastIndexTime = time.Now()
 	if err := cfg2.Save(cwd); err != nil {
 		fmt.Printf("Warning: failed to save config: %v\n", err)
-	}
-
-	if err := st2.Persist(ctx2); err != nil {
-		fmt.Printf("Warning: failed to persist index: %v\n", err)
 	}
 
 	fmt.Printf("Done: %d files indexed, %d chunks created, %d skipped.\n",

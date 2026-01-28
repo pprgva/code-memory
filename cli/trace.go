@@ -106,30 +106,32 @@ func runTraceCallers(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
 	}
 
-	// Lookup symbol
+	// Lookup symbol definition (peut ne pas exister si c'est une API externe)
 	symbols, err := symbolStore.LookupSymbol(ctx, symbolName)
 	if err != nil {
 		return fmt.Errorf("failed to lookup symbol: %w", err)
 	}
 
-	if len(symbols) == 0 {
-		if traceJSON {
-			return outputJSON(trace.TraceResult{Query: symbolName, Mode: traceMode})
-		}
-		fmt.Printf("No symbol found: %s\n", symbolName)
-		return nil
-	}
-
-	// Find callers
+	// Find callers — même si le symbole n'est pas défini localement
 	refs, err := symbolStore.LookupCallers(ctx, symbolName)
 	if err != nil {
 		return fmt.Errorf("failed to lookup callers: %w", err)
 	}
 
+	if len(symbols) == 0 && len(refs) == 0 {
+		if traceJSON {
+			return outputJSON(trace.TraceResult{Query: symbolName, Mode: traceMode})
+		}
+		fmt.Printf("No symbol or callers found for: %s\n", symbolName)
+		return nil
+	}
+
 	result := trace.TraceResult{
-		Query:  symbolName,
-		Mode:   traceMode,
-		Symbol: &symbols[0],
+		Query: symbolName,
+		Mode:  traceMode,
+	}
+	if len(symbols) > 0 {
+		result.Symbol = &symbols[0]
 	}
 
 	// Convert refs to CallerInfo
@@ -179,7 +181,7 @@ func runTraceCallees(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
 	}
 
-	// Lookup symbol
+	// Lookup symbol definition
 	symbols, err := symbolStore.LookupSymbol(ctx, symbolName)
 	if err != nil {
 		return fmt.Errorf("failed to lookup symbol: %w", err)
@@ -276,8 +278,12 @@ func outputJSON(result trace.TraceResult) error {
 }
 
 func displayCallersResult(result trace.TraceResult) error {
-	fmt.Printf("Symbol: %s (%s)\n", result.Symbol.Name, result.Symbol.Kind)
-	fmt.Printf("File: %s:%d\n", result.Symbol.File, result.Symbol.Line)
+	if result.Symbol != nil {
+		fmt.Printf("Symbol: %s (%s)\n", result.Symbol.Name, result.Symbol.Kind)
+		fmt.Printf("File: %s:%d\n", result.Symbol.File, result.Symbol.Line)
+	} else {
+		fmt.Printf("Symbol: %s (external/unresolved)\n", result.Query)
+	}
 	fmt.Printf("\nCallers (%d):\n", len(result.Callers))
 	fmt.Println(strings.Repeat("-", 60))
 

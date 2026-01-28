@@ -8,6 +8,21 @@ import (
 	"unicode"
 )
 
+// vueScriptRe extrait le contenu du bloc <script> dans un fichier .vue
+var vueScriptRe = regexp.MustCompile(`(?s)<script[^>]*>(.*?)</script>`)
+
+// extractVueScript retourne le contenu du bloc <script> et le numéro de ligne où il commence (0-based).
+// Si aucun bloc n'est trouvé, retourne ("", 0).
+func extractVueScript(content string) (scriptContent string, lineOffset int) {
+	loc := vueScriptRe.FindStringSubmatchIndex(content)
+	if loc == nil || len(loc) < 4 {
+		return "", 0
+	}
+	scriptStart := loc[2]
+	lineOffset = strings.Count(content[:scriptStart], "\n")
+	return content[loc[2]:loc[3]], lineOffset
+}
+
 // RegexExtractor implements SymbolExtractor using regex patterns.
 type RegexExtractor struct {
 	patterns map[string]*LanguagePatterns
@@ -37,7 +52,21 @@ func (e *RegexExtractor) SupportedLanguages() []string {
 // ExtractSymbols extracts all symbol definitions from a file.
 func (e *RegexExtractor) ExtractSymbols(ctx context.Context, filePath string, content string) ([]Symbol, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	patterns := e.patterns[ext]
+
+	// Pour les fichiers .vue, extraire le bloc <script> et utiliser les patterns TypeScript
+	var patterns *LanguagePatterns
+	var lineOffset int
+	if ext == ".vue" {
+		scriptContent, offset := extractVueScript(content)
+		if scriptContent == "" {
+			return nil, nil
+		}
+		patterns = e.patterns[".ts"]
+		content = scriptContent
+		lineOffset = offset
+	} else {
+		patterns = e.patterns[ext]
+	}
 	if patterns == nil {
 		return nil, nil
 	}
@@ -68,6 +97,13 @@ func (e *RegexExtractor) ExtractSymbols(ctx context.Context, filePath string, co
 	// Extract types
 	for _, re := range patterns.Types {
 		symbols = append(symbols, e.extractMatches(re, content, filePath, patterns.Language, KindType)...)
+	}
+
+	// Corriger les numéros de ligne pour les fichiers .vue
+	if lineOffset > 0 {
+		for i := range symbols {
+			symbols[i].Line += lineOffset
+		}
 	}
 
 	return symbols, nil
@@ -142,7 +178,21 @@ func (e *RegexExtractor) extractMethodMatches(re *regexp.Regexp, content string,
 // ExtractReferences extracts all symbol references from a file.
 func (e *RegexExtractor) ExtractReferences(ctx context.Context, filePath string, content string) ([]Reference, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	patterns := e.patterns[ext]
+
+	// Pour les fichiers .vue, extraire le bloc <script> et utiliser les patterns TypeScript
+	var patterns *LanguagePatterns
+	var lineOffset int
+	if ext == ".vue" {
+		scriptContent, offset := extractVueScript(content)
+		if scriptContent == "" {
+			return nil, nil
+		}
+		patterns = e.patterns[".ts"]
+		content = scriptContent
+		lineOffset = offset
+	} else {
+		patterns = e.patterns[ext]
+	}
 	if patterns == nil {
 		return nil, nil
 	}
@@ -202,6 +252,14 @@ func (e *RegexExtractor) ExtractReferences(ctx context.Context, filePath string,
 					CallerLine: caller.Line,
 				})
 			}
+		}
+	}
+
+	// Corriger les numéros de ligne pour les fichiers .vue
+	if lineOffset > 0 {
+		for i := range refs {
+			refs[i].Line += lineOffset
+			refs[i].CallerLine += lineOffset
 		}
 	}
 
