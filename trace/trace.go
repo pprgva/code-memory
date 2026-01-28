@@ -170,4 +170,7 @@ type SymbolStore interface {
 
 	// GetStats returns statistics about the symbol index.
 	GetStats(ctx context.Context) (*SymbolStats, error)
+
+	// GetAllSymbols returns all symbols in the index.
+	GetAllSymbols(ctx context.Context) ([]Symbol, error)
 }

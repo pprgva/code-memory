@@ -379,3 +379,14 @@ func (s *GOBSymbolStore) IsFileIndexed(filePath string) bool {
 	defer s.mu.RUnlock()
 	return s.fileIndex[filePath]
 }
+
+// GetAllSymbols returns all symbols in the index.
+func (s *GOBSymbolStore) GetAllSymbols(ctx context.Context) ([]Symbol, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var all []Symbol
+	for _, syms := range s.index.Symbols {
+		all = append(all, syms...)
+	}
+	return all, nil
+}

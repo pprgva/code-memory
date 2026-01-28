@@ -29,6 +29,12 @@ grepai search "error handling" --limit 5
 
 # JSON output for AI agents (--compact saves ~80% tokens)
 grepai search "database queries" --json --compact
+
+# Filter by recently modified files
+grepai search "authentication" --modified 7d
+
+# Filter by files changed since git ref
+grepai search "error handling" --since main
 ```
 
 ### How It Works
@@ -94,6 +100,48 @@ Output format:
 ]
 ```
 
+### Filtering Results
+
+#### Time-Based Filters
+
+Filter search results to focus on recently modified code:
+
+**--modified**: Filter files modified within a time duration
+```bash
+# Files modified in last 7 days
+grepai search "authentication" --modified 7d
+
+# Files modified in last 2 hours
+grepai search "bug fix" --modified 2h
+
+# Supported units: m (minutes), h (hours), d (days), w (weeks)
+grepai search "refactor" --modified 2w
+```
+
+**--since**: Filter files changed since a git reference
+```bash
+# Files changed since main branch
+grepai search "new features" --since main
+
+# Files changed in last 10 commits
+grepai search "updates" --since HEAD~10
+
+# Files changed since a specific commit
+grepai search "fixes" --since abc123
+```
+
+**Note**: Time filters are only available for local project searches, not workspace searches.
+
+#### File Type and Pattern Filters
+
+```bash
+# Filter by file extension
+grepai search "authentication" --type go --type ts
+
+# Filter by glob pattern
+grepai search "config" --glob "src/**/*.yaml"
+```
+
 ### Search Enhancements
 
 grepai provides two optional search improvements:
@@ -141,6 +189,19 @@ grepai search "database connection and queries"
 
 # Locate API endpoints
 grepai search "REST API route handlers"
+```
+
+#### Finding Recent Changes
+
+```bash
+# Find authentication changes in the last week
+grepai search "authentication" --modified 7d
+
+# Find error handling changes since main branch
+grepai search "error handling" --since main
+
+# Combine with other filters
+grepai search "API changes" --since HEAD~5 --type go --limit 10
 ```
 
 #### AI Agent Integration

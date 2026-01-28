@@ -67,16 +67,35 @@ Examples:
 	RunE: runTraceGraph,
 }
 
+var traceImpactCmd = &cobra.Command{
+	Use:   "impact <symbol>",
+	Short: "Analyze blast radius of changing a symbol",
+	Long: `Show all functions affected by modifying the target symbol.
+
+Performs upward call graph traversal to find:
+- Direct callers (depth 1)
+- Transitive callers (depth 2+)
+- All affected files
+
+Examples:
+  grepai trace impact "HandleLogin"
+  grepai trace impact "UserService" --depth 3 --json`,
+	Args: cobra.ExactArgs(1),
+	RunE: runTraceImpact,
+}
+
 func init() {
 	// Add flags to all trace subcommands
-	for _, cmd := range []*cobra.Command{traceCallersCmd, traceCalleesCmd, traceGraphCmd} {
+	for _, cmd := range []*cobra.Command{traceCallersCmd, traceCalleesCmd, traceGraphCmd, traceImpactCmd} {
 		cmd.Flags().BoolVar(&traceJSON, "json", false, "Output results in JSON format")
 	}
 	traceGraphCmd.Flags().IntVarP(&traceDepth, "depth", "d", 2, "Maximum depth for graph traversal")
+	traceImpactCmd.Flags().IntVarP(&traceDepth, "depth", "d", 3, "Maximum depth for impact analysis")
 
 	traceCmd.AddCommand(traceCallersCmd)
 	traceCmd.AddCommand(traceCalleesCmd)
 	traceCmd.AddCommand(traceGraphCmd)
+	traceCmd.AddCommand(traceImpactCmd)
 
 	rootCmd.AddCommand(traceCmd)
 }
@@ -348,4 +367,116 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+func runTraceImpact(cmd *cobra.Command, args []string) error {
+	symbolName := args[0]
+	ctx := context.Background()
+
+	projectRoot, err := config.FindProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	symbolStore := trace.NewGOBSymbolStore(config.GetSymbolIndexPath(projectRoot))
+	if err := symbolStore.Load(ctx); err != nil {
+		return fmt.Errorf("failed to load symbol index: %w", err)
+	}
+	defer symbolStore.Close()
+
+	// Check if index exists
+	stats, err := symbolStore.GetStats(ctx)
+	if err != nil || stats.TotalSymbols == 0 {
+		return fmt.Errorf("symbol index is empty. Run 'grepai watch' first to build the index")
+	}
+
+	// Build impact analysis using BFS upward
+	type queueItem struct {
+		name  string
+		depth int
+	}
+
+	visited := make(map[string]bool)
+	affectedFiles := make(map[string]bool)
+	var impactedFuncs []trace.CallerInfo
+
+	queue := []queueItem{{symbolName, 0}}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if visited[current.name] || current.depth >= traceDepth {
+			continue
+		}
+		visited[current.name] = true
+
+		callers, _ := symbolStore.LookupCallers(ctx, current.name)
+		for _, ref := range callers {
+			callerSyms, _ := symbolStore.LookupSymbol(ctx, ref.CallerName)
+			var callerSym trace.Symbol
+			if len(callerSyms) > 0 {
+				callerSym = callerSyms[0]
+			} else {
+				callerSym = trace.Symbol{Name: ref.CallerName, File: ref.CallerFile, Line: ref.CallerLine}
+			}
+
+			if !visited[ref.CallerName] {
+				impactedFuncs = append(impactedFuncs, trace.CallerInfo{
+					Symbol: callerSym,
+					CallSite: trace.CallSite{
+						File:    ref.File,
+						Line:    ref.Line,
+						Context: ref.Context,
+					},
+				})
+				affectedFiles[callerSym.File] = true
+				queue = append(queue, queueItem{ref.CallerName, current.depth + 1})
+			}
+		}
+	}
+
+	// Get target symbol
+	symbols, _ := symbolStore.LookupSymbol(ctx, symbolName)
+
+	if traceJSON {
+		result := map[string]interface{}{
+			"symbol":         symbolName,
+			"depth":          traceDepth,
+			"impacted_funcs": len(impactedFuncs),
+			"affected_files": len(affectedFiles),
+			"callers":        impactedFuncs,
+		}
+		if len(symbols) > 0 {
+			result["definition"] = symbols[0]
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(result)
+	}
+
+	// Text output
+	fmt.Printf("Impact Analysis: %s (depth %d)\n", symbolName, traceDepth)
+	fmt.Println(strings.Repeat("=", 50))
+
+	if len(symbols) > 0 {
+		fmt.Printf("\nTarget: %s (%s) @ %s:%d\n", symbols[0].Name, symbols[0].Kind, symbols[0].File, symbols[0].Line)
+	}
+
+	fmt.Printf("\nImpacted functions: %d\n", len(impactedFuncs))
+	fmt.Printf("Affected files: %d\n\n", len(affectedFiles))
+
+	for i, caller := range impactedFuncs {
+		fmt.Printf("%d. %s\n", i+1, caller.Symbol.Name)
+		if caller.Symbol.File != "" {
+			fmt.Printf("   Defined: %s:%d\n", caller.Symbol.File, caller.Symbol.Line)
+		}
+		fmt.Printf("   Calls at: %s:%d\n", caller.CallSite.File, caller.CallSite.Line)
+	}
+
+	fmt.Printf("\n%s\n", strings.Repeat("-", 50))
+	fmt.Printf("SUMMARY: Changing %s may affect %d functions in %d files\n",
+		symbolName, len(impactedFuncs), len(affectedFiles))
+
+	return nil
 }

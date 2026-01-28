@@ -23,6 +23,8 @@ var (
 	searchProjects  []string
 	searchTypes     []string
 	searchGlobs     []string
+	searchSince     string
+	searchModified  string
 )
 
 // SearchResultJSON is a lightweight struct for JSON output (excludes vector, hash, updated_at)
@@ -63,6 +65,8 @@ func init() {
 	searchCmd.Flags().StringArrayVar(&searchProjects, "project", nil, "Project name(s) to search (requires --workspace, can be repeated)")
 	searchCmd.Flags().StringSliceVar(&searchTypes, "type", nil, "Filter by file type (e.g., ts, go, vue)")
 	searchCmd.Flags().StringSliceVarP(&searchGlobs, "glob", "g", nil, "Filter by glob pattern (e.g., 'src/**/*')")
+	searchCmd.Flags().StringVar(&searchSince, "since", "", "Filter files modified since git ref (e.g., main, HEAD~10)")
+	searchCmd.Flags().StringVar(&searchModified, "modified", "", "Filter files modified within duration (e.g., 7d, 2h, 30m)")
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
@@ -134,6 +138,39 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	}
 	if len(searchGlobs) > 0 {
 		results = search.FilterByGlob(results, searchGlobs)
+	}
+
+	// Apply time filters
+	if searchSince != "" {
+		modFiles, err := getGitModifiedFiles(projectRoot, searchSince)
+		if err != nil {
+			return fmt.Errorf("--since filter failed: %w", err)
+		}
+		var filtered []store.SearchResult
+		for _, r := range results {
+			if modFiles[r.Chunk.FilePath] {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
+	}
+
+	if searchModified != "" {
+		dur, err := parseDuration(searchModified)
+		if err != nil {
+			return err
+		}
+		modFiles, err := getRecentlyModifiedFiles(projectRoot, dur)
+		if err != nil {
+			return fmt.Errorf("--modified filter failed: %w", err)
+		}
+		var filtered []store.SearchResult
+		for _, r := range results {
+			if modFiles[r.Chunk.FilePath] {
+				filtered = append(filtered, r)
+			}
+		}
+		results = filtered
 	}
 
 	// Calculate elapsed time
@@ -299,6 +336,9 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		return err
 	}
 
+	// Record start time
+	startTime := time.Now()
+
 	// Initialize embedder
 	embedderCfg := &config.Config{Embedder: ws.Embedder}
 	emb, err := initializeEmbedder(embedderCfg)
@@ -306,6 +346,9 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
+
+	// Detect if socket was used
+	_, usedSocket := emb.(*embedder.SocketEmbedder)
 
 	// Initialize store
 	var st store.VectorStore
@@ -355,6 +398,27 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		results = search.FilterByGlob(results, searchGlobs)
 	}
 
+	// Apply time filters
+	// Note: For workspace searches, we need to handle project-prefixed paths
+	if searchSince != "" {
+		// For workspace mode, we can't use git directly as files have workspace/project/ prefix
+		// Skip git-based filtering for workspace searches
+		if searchWorkspace != "" {
+			return fmt.Errorf("--since filter is not supported for workspace searches (requires local git repository)")
+		}
+	}
+
+	if searchModified != "" {
+		// For workspace mode, we can't use filesystem mtime as paths are virtual
+		// Skip mtime-based filtering for workspace searches
+		if searchWorkspace != "" {
+			return fmt.Errorf("--modified filter is not supported for workspace searches (requires local filesystem)")
+		}
+	}
+
+	// Calculate elapsed time
+	elapsed := time.Since(startTime)
+
 	// Filter by projects if specified
 	// File paths are stored as: workspaceName/projectName/relativePath
 	if len(searchProjects) > 0 {
@@ -382,6 +446,7 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 
 	if len(results) == 0 {
 		fmt.Println("No results found.")
+		displaySearchTiming(elapsed, usedSocket)
 		return nil
 	}
 
@@ -410,6 +475,9 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		}
 		fmt.Println()
 	}
+
+	// Display timing hint
+	displaySearchTiming(elapsed, usedSocket)
 
 	return nil
 }
