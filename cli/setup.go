@@ -360,19 +360,23 @@ func runSetupIndexation(projectRoot string, projectName string, silent bool) (fi
 	var pgStore *store.PostgresStore
 
 	if cfg.Store.Backend == "postgres" {
-		// First connection to get/create project UUID
+		// Use local ProjectID (already generated above) for PostgreSQL
+		projectUUID = cfg.ProjectID
+
+		// First connection to create/update project in database
 		pgStore, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, "", cfg.Embedder.Dimensions)
 		if err != nil {
 			return 0, 0, 0, "", err
 		}
-		projectUUID, err = pgStore.GetOrCreateProject(ctx, projectName, absPath)
+		// Pass local UUID so PostgreSQL uses the same ID
+		_, err = pgStore.GetOrCreateProject(ctx, projectName, absPath, projectUUID)
 		if err != nil {
 			pgStore.Close()
 			return 0, 0, 0, "", fmt.Errorf("failed to get/create project in database: %w", err)
 		}
 		pgStore.Close()
 
-		// Reconnect with the correct project UUID
+		// Reconnect with the project UUID
 		pgStore, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectUUID, cfg.Embedder.Dimensions)
 		if err != nil {
 			return 0, 0, 0, "", err

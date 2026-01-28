@@ -314,8 +314,11 @@ func ensureProjectID(ctx context.Context, cfg *config.Config, projectRoot string
 		return "", fmt.Errorf("failed to run migrations: %w", err)
 	}
 
-	// Get or create the project in the database
-	projectID, err := store.GetOrCreateProjectWithPool(ctx, pool, projectName, projectRoot)
+	// Generate a local UUID to use in the database
+	localUUID := config.GenerateProjectID()
+
+	// Get or create the project in the database with our local UUID
+	projectID, err := store.GetOrCreateProjectWithPool(ctx, pool, projectName, projectRoot, localUUID)
 	if err != nil {
 		return "", fmt.Errorf("failed to register project: %w", err)
 	}

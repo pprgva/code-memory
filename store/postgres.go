@@ -376,7 +376,8 @@ func NewPostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 
 // GetOrCreateProjectWithPool finds or creates a project using a raw pool connection.
 // This is useful when you need to register a project before creating a PostgresStore.
-func GetOrCreateProjectWithPool(ctx context.Context, pool *pgxpool.Pool, name string, localPath string) (string, error) {
+// If projectID is provided, it will be used for new projects instead of generating one.
+func GetOrCreateProjectWithPool(ctx context.Context, pool *pgxpool.Pool, name string, localPath string, projectID string) (string, error) {
 	var projectUUID string
 	var existingPath *string
 
@@ -386,6 +387,19 @@ func GetOrCreateProjectWithPool(ctx context.Context, pool *pgxpool.Pool, name st
 	).Scan(&projectUUID, &existingPath)
 
 	if err == pgx.ErrNoRows {
+		if projectID != "" {
+			// Use provided UUID
+			_, err = pool.Exec(ctx,
+				`INSERT INTO grepai_projects (id, name, local_path, index_status)
+				VALUES ($1, $2, $3, 'pending')`,
+				projectID, name, localPath,
+			)
+			if err != nil {
+				return "", fmt.Errorf("failed to create project with ID: %w", err)
+			}
+			return projectID, nil
+		}
+		// Generate new UUID
 		err = pool.QueryRow(ctx,
 			`INSERT INTO grepai_projects (name, local_path, index_status)
 			VALUES ($1, $2, 'pending')
@@ -416,8 +430,9 @@ func GetOrCreateProjectWithPool(ctx context.Context, pool *pgxpool.Pool, name st
 
 // GetOrCreateProject finds a project by name or creates it if not found.
 // If the project exists but local_path differs, it updates the path.
+// If projectID is provided, it will be used for new projects instead of generating one.
 // Returns the project UUID.
-func (s *PostgresStore) GetOrCreateProject(ctx context.Context, name string, localPath string) (string, error) {
+func (s *PostgresStore) GetOrCreateProject(ctx context.Context, name string, localPath string, projectID string) (string, error) {
 	var projectUUID string
 	var existingPath *string
 
@@ -429,6 +444,19 @@ func (s *PostgresStore) GetOrCreateProject(ctx context.Context, name string, loc
 
 	if err == pgx.ErrNoRows {
 		// Project doesn't exist, create it
+		if projectID != "" {
+			// Use provided UUID
+			_, err = s.pool.Exec(ctx,
+				`INSERT INTO grepai_projects (id, name, local_path, index_status)
+				VALUES ($1, $2, $3, 'pending')`,
+				projectID, name, localPath,
+			)
+			if err != nil {
+				return "", fmt.Errorf("failed to create project with ID: %w", err)
+			}
+			return projectID, nil
+		}
+		// Generate new UUID
 		err = s.pool.QueryRow(ctx,
 			`INSERT INTO grepai_projects (name, local_path, index_status)
 			VALUES ($1, $2, 'pending')
@@ -458,7 +486,7 @@ func (s *PostgresStore) GetOrCreateProject(ctx context.Context, name string, loc
 	return projectUUID, nil
 }
 
-// UpdateProjectStats updates file_count and chunk_count for a project.
+// UpdateProjectStats updates file_count, chunk_count, and sets status to 'ready'.
 func (s *PostgresStore) UpdateProjectStats(ctx context.Context, projectUUID string) error {
 	// Note: grepai_chunks/documents.project_id is TEXT, grepai_projects.id is UUID
 	// So we cast appropriately in the query
@@ -466,6 +494,7 @@ func (s *PostgresStore) UpdateProjectStats(ctx context.Context, projectUUID stri
 		UPDATE grepai_projects SET
 			file_count = (SELECT COUNT(*) FROM grepai_documents WHERE project_id = $1::text),
 			chunk_count = (SELECT COUNT(*) FROM grepai_chunks WHERE project_id = $1::text),
+			index_status = 'ready',
 			updated_at = NOW()
 		WHERE id = $1::uuid`,
 		projectUUID,
