@@ -169,7 +169,7 @@ func runNewProject(cmd *cobra.Command, args []string) error {
 	extractor := trace.NewRegexExtractor()
 	tracedLanguages := cfg2.Trace.EnabledLanguages
 	if len(tracedLanguages) == 0 {
-		tracedLanguages = []string{".go", ".js", ".ts", ".jsx", ".tsx", ".vue", ".py", ".php", ".java", ".cs"}
+		tracedLanguages = trace.DefaultTracedExtensions()
 	}
 	symbolCount := 0
 	files, _, _ := scanner.Scan()

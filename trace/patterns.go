@@ -48,8 +48,20 @@ var languagePatterns = map[string]*LanguagePatterns{
 	".hxx":  cppPatterns,
 	".java": javaPatterns,
 	".cs":   csharpPatterns,
-	".pas":  pascalPatterns,
-	".dpr":  pascalPatterns,
+	".pas":    pascalPatterns,
+	".dpr":    pascalPatterns,
+	".dart":   dartPatterns,
+	".rb":     rubyPatterns,
+	".kt":     kotlinPatterns,
+	".kts":    kotlinPatterns,
+	".swift":  swiftPatterns,
+	".lua":    luaPatterns,
+	".sh":     shellPatterns,
+	".bash":   shellPatterns,
+	".zsh":    shellPatterns,
+	".scala":  scalaPatterns,
+	".vue":    tsPatterns,
+	".svelte": tsPatterns,
 }
 
 // Go patterns
@@ -285,6 +297,56 @@ var languageKeywords = map[string]map[string]bool{
 		"get": true, "set": true, "init": true, "value": true, "await": true,
 		"yield": true, "lock": true, "this": true, "base": true,
 		"add": true, "remove": true, "toString": true, "equals": true, "getHashCode": true,
+	},
+	"dart": {
+		"if": true, "for": true, "while": true, "switch": true, "return": true,
+		"await": true, "yield": true, "throw": true, "try": true, "catch": true,
+		"finally": true, "new": true, "assert": true, "print": true, "import": true,
+		"export": true, "do": true, "break": true, "continue": true,
+	},
+	"ruby": {
+		"if": true, "unless": true, "while": true, "until": true, "for": true,
+		"case": true, "when": true, "return": true, "yield": true, "raise": true,
+		"require": true, "include": true, "extend": true, "puts": true, "print": true,
+		"attr_reader": true, "attr_writer": true, "attr_accessor": true, "do": true,
+		"begin": true, "end": true, "rescue": true, "ensure": true, "then": true,
+		"else": true, "elsif": true,
+	},
+	"kotlin": {
+		"if": true, "for": true, "while": true, "when": true, "return": true,
+		"throw": true, "try": true, "catch": true, "finally": true, "is": true,
+		"as": true, "in": true, "do": true, "break": true, "continue": true,
+		"import": true, "val": true, "var": true, "println": true, "print": true,
+	},
+	"swift": {
+		"if": true, "for": true, "while": true, "switch": true, "guard": true,
+		"return": true, "throw": true, "try": true, "catch": true, "defer": true,
+		"import": true, "let": true, "var": true, "print": true, "debugPrint": true,
+		"fatalError": true, "precondition": true, "assert": true, "do": true,
+		"break": true, "continue": true, "case": true, "default": true, "where": true,
+		"in": true, "as": true, "is": true,
+	},
+	"lua": {
+		"if": true, "for": true, "while": true, "repeat": true, "return": true,
+		"do": true, "end": true, "then": true, "else": true, "elseif": true,
+		"not": true, "and": true, "or": true, "in": true, "local": true,
+		"require": true, "print": true, "type": true, "tostring": true, "tonumber": true,
+		"pairs": true, "ipairs": true, "next": true, "select": true, "pcall": true,
+		"xpcall": true, "error": true, "assert": true, "function": true,
+	},
+	"shell": {
+		"if": true, "then": true, "else": true, "elif": true, "fi": true,
+		"for": true, "while": true, "until": true, "do": true, "done": true,
+		"case": true, "esac": true, "in": true, "return": true, "exit": true,
+		"echo": true, "printf": true, "export": true, "source": true, "cd": true,
+		"test": true, "eval": true, "exec": true, "read": true, "set": true,
+		"unset": true, "shift": true, "local": true, "declare": true, "function": true,
+	},
+	"scala": {
+		"if": true, "for": true, "while": true, "match": true, "return": true,
+		"throw": true, "try": true, "catch": true, "finally": true, "yield": true,
+		"new": true, "import": true, "val": true, "var": true, "def": true,
+		"println": true, "print": true, "require": true, "assert": true, "do": true,
 	},
 	"pascal": {
 		// Control flow
@@ -548,6 +610,136 @@ var pascalPatterns = &LanguagePatterns{
 	},
 	FunctionCall: regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)\s*\(`),
 	MethodCall:   regexp.MustCompile(`\.([A-Za-z_][A-Za-z0-9_]*)\s*\(`),
+}
+
+// Dart patterns
+var dartPatterns = &LanguagePatterns{
+	Extension: ".dart",
+	Language:  "dart",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)(?:(?:static|external)\s+)?(?:Future<[^>]*>|void|int|double|String|bool|dynamic|var|[A-Za-z_]\w*)\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`),
+	},
+	Classes: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:abstract\s+)?(?:base\s+)?(?:sealed\s+)?(?:final\s+)?class\s+([A-Za-z_]\w*)`),
+	},
+	Interfaces: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^mixin\s+([A-Za-z_]\w*)`),
+	},
+	Types: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^enum\s+([A-Za-z_]\w*)\s*\{`),
+		regexp.MustCompile(`(?m)^typedef\s+([A-Za-z_]\w*)`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`\.([A-Za-z_]\w*)\s*\(`),
+}
+
+// Ruby patterns
+var rubyPatterns = &LanguagePatterns{
+	Extension: ".rb",
+	Language:  "ruby",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^def\s+([A-Za-z_]\w*[!?]?)`),
+	},
+	Methods: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^\s+def\s+([A-Za-z_]\w*[!?]?)`),
+	},
+	Classes: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^class\s+([A-Z]\w*)(?:\s*<\s*[A-Z][\w:]*)?`),
+	},
+	Interfaces: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^module\s+([A-Z]\w*)`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`\.([A-Za-z_]\w*[!?]?)\s*(?:\(|[^=])`),
+}
+
+// Kotlin patterns
+var kotlinPatterns = &LanguagePatterns{
+	Extension: ".kt",
+	Language:  "kotlin",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)(?:(?:public|private|protected|internal)\s+)?(?:suspend\s+)?(?:inline\s+)?fun\s+(?:<[^>]*>\s+)?([A-Za-z_]\w*)\s*\(`),
+		regexp.MustCompile(`(?m)fun\s+\w+\.([A-Za-z_]\w*)\s*\(`),
+	},
+	Classes: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:public|private|protected|internal)\s+)?(?:abstract\s+)?(?:open\s+)?(?:sealed\s+)?(?:data\s+)?class\s+([A-Za-z_]\w*)`),
+	},
+	Interfaces: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:public|private|protected|internal)\s+)?interface\s+([A-Za-z_]\w*)`),
+	},
+	Types: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:enum\s+class|object|typealias)\s+([A-Za-z_]\w*)`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`\.([A-Za-z_]\w*)\s*\(`),
+}
+
+// Swift patterns
+var swiftPatterns = &LanguagePatterns{
+	Extension: ".swift",
+	Language:  "swift",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)(?:(?:public|private|internal|fileprivate|open)\s+)?(?:static\s+|class\s+)?(?:override\s+)?func\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`),
+	},
+	Classes: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:public|private|internal|fileprivate|open)\s+)?(?:final\s+)?class\s+([A-Za-z_]\w*)`),
+	},
+	Interfaces: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:public|private|internal|fileprivate)\s+)?protocol\s+([A-Za-z_]\w*)`),
+	},
+	Types: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:public|private|internal|fileprivate|open)\s+)?struct\s+([A-Za-z_]\w*)`),
+		regexp.MustCompile(`(?m)^(?:(?:public|private|internal|fileprivate|open)\s+)?enum\s+([A-Za-z_]\w*)`),
+		regexp.MustCompile(`(?m)^(?:(?:public|private|internal|fileprivate)\s+)?typealias\s+([A-Za-z_]\w*)\s*=`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`\.([A-Za-z_]\w*)\s*\(`),
+}
+
+// Lua patterns
+var luaPatterns = &LanguagePatterns{
+	Extension: ".lua",
+	Language:  "lua",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:local\s+)?function\s+([A-Za-z_]\w*)\s*\(`),
+		regexp.MustCompile(`(?m)^local\s+([A-Za-z_]\w*)\s*=\s*function\s*\(`),
+	},
+	Methods: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^function\s+\w+:([A-Za-z_]\w*)\s*\(`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`:([A-Za-z_]\w*)\s*\(`),
+}
+
+// Shell patterns
+var shellPatterns = &LanguagePatterns{
+	Extension: ".sh",
+	Language:  "shell",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^([A-Za-z_]\w*)\s*\(\s*\)\s*\{`),
+		regexp.MustCompile(`(?m)^function\s+([A-Za-z_]\w*)`),
+	},
+}
+
+// Scala patterns
+var scalaPatterns = &LanguagePatterns{
+	Extension: ".scala",
+	Language:  "scala",
+	Functions: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^\s*(?:(?:private|protected)\s+)?(?:override\s+)?def\s+([A-Za-z_]\w*)\s*(?:\[.*?\])?\s*\(`),
+	},
+	Classes: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:(?:abstract|sealed|final)\s+)*(?:case\s+)?class\s+([A-Za-z_]\w*)`),
+		regexp.MustCompile(`(?m)^(?:case\s+)?object\s+([A-Za-z_]\w*)`),
+	},
+	Interfaces: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^(?:sealed\s+)?trait\s+([A-Za-z_]\w*)`),
+	},
+	Types: []*regexp.Regexp{
+		regexp.MustCompile(`(?m)^\s*type\s+([A-Za-z_]\w*)\s*(?:\[.*?\])?\s*=`),
+	},
+	FunctionCall: regexp.MustCompile(`\b([A-Za-z_]\w*)\s*\(`),
+	MethodCall:   regexp.MustCompile(`\.([A-Za-z_]\w*)\s*(?:\(|[^=])`),
 }
 
 // IsKeyword checks if a name is a language keyword.

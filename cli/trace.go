@@ -13,7 +13,6 @@ import (
 )
 
 var (
-	traceMode  string
 	traceDepth int
 	traceJSON  bool
 )
@@ -28,7 +27,7 @@ var traceCmd = &cobra.Command{
 
 Examples:
   grepai trace callers "Login"
-  grepai trace callees "HandleRequest" --mode precise
+  grepai trace callees "HandleRequest"
   grepai trace graph "ProcessOrder" --depth 3 --json`,
 }
 
@@ -39,8 +38,7 @@ var traceCallersCmd = &cobra.Command{
 
 Examples:
   grepai trace callers "Login"
-  grepai trace callers "HandleRequest" --json
-  grepai trace callers "ProcessOrder" --mode precise`,
+  grepai trace callers "HandleRequest" --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTraceCallers,
 }
@@ -72,7 +70,6 @@ Examples:
 func init() {
 	// Add flags to all trace subcommands
 	for _, cmd := range []*cobra.Command{traceCallersCmd, traceCalleesCmd, traceGraphCmd} {
-		cmd.Flags().StringVarP(&traceMode, "mode", "m", "fast", "Extraction mode: fast (regex) or precise (tree-sitter)")
 		cmd.Flags().BoolVar(&traceJSON, "json", false, "Output results in JSON format")
 	}
 	traceGraphCmd.Flags().IntVarP(&traceDepth, "depth", "d", 2, "Maximum depth for graph traversal")
@@ -120,7 +117,7 @@ func runTraceCallers(cmd *cobra.Command, args []string) error {
 
 	if len(symbols) == 0 && len(refs) == 0 {
 		if traceJSON {
-			return outputJSON(trace.TraceResult{Query: symbolName, Mode: traceMode})
+			return outputJSON(trace.TraceResult{Query: symbolName, Mode: "fast"})
 		}
 		fmt.Printf("No symbol or callers found for: %s\n", symbolName)
 		return nil
@@ -128,7 +125,7 @@ func runTraceCallers(cmd *cobra.Command, args []string) error {
 
 	result := trace.TraceResult{
 		Query: symbolName,
-		Mode:  traceMode,
+		Mode:  "fast",
 	}
 	if len(symbols) > 0 {
 		result.Symbol = &symbols[0]
@@ -189,7 +186,7 @@ func runTraceCallees(cmd *cobra.Command, args []string) error {
 
 	if len(symbols) == 0 {
 		if traceJSON {
-			return outputJSON(trace.TraceResult{Query: symbolName, Mode: traceMode})
+			return outputJSON(trace.TraceResult{Query: symbolName, Mode: "fast"})
 		}
 		fmt.Printf("No symbol found: %s\n", symbolName)
 		return nil
@@ -203,7 +200,7 @@ func runTraceCallees(cmd *cobra.Command, args []string) error {
 
 	result := trace.TraceResult{
 		Query:  symbolName,
-		Mode:   traceMode,
+		Mode:   "fast",
 		Symbol: &symbols[0],
 	}
 
@@ -260,7 +257,7 @@ func runTraceGraph(cmd *cobra.Command, args []string) error {
 
 	result := trace.TraceResult{
 		Query: symbolName,
-		Mode:  traceMode,
+		Mode:  "fast",
 		Graph: graph,
 	}
 

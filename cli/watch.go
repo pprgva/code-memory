@@ -254,6 +254,10 @@ func startBackgroundWatch(logDir string) error {
 }
 
 func initializeEmbedder(cfg *config.Config) (embedder.Embedder, error) {
+	socketEmb, err := embedder.NewSocketEmbedder()
+	if err == nil {
+		return socketEmb, nil
+	}
 	return embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
 }
 
@@ -505,7 +509,7 @@ func runWatchForeground() error {
 	// Use default trace languages if not configured
 	tracedLanguages := cfg.Trace.EnabledLanguages
 	if len(tracedLanguages) == 0 {
-		tracedLanguages = []string{".go", ".js", ".ts", ".jsx", ".tsx", ".vue", ".py", ".php", ".java", ".cs"}
+		tracedLanguages = trace.DefaultTracedExtensions()
 	}
 
 	// Run initial scan and build symbol index

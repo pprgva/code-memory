@@ -29,8 +29,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected chunk size 512, got %d", cfg.Chunking.Size)
 	}
 
-	if cfg.Chunking.Overlap != 50 {
-		t.Errorf("expected chunk overlap 50, got %d", cfg.Chunking.Overlap)
+	if cfg.Chunking.Overlap != 100 {
+		t.Errorf("expected chunk overlap 100, got %d", cfg.Chunking.Overlap)
 	}
 
 	if cfg.Watch.DebounceMs != 500 {

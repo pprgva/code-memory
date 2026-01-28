@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/pprgva/code-memory/config"
-	"github.com/pprgva/code-memory/embedder"
 	"github.com/pprgva/code-memory/search"
 	"github.com/pprgva/code-memory/store"
 )
@@ -91,48 +90,17 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Initialize embedder — try daemon socket first, fallback to local worker
-	var emb embedder.Embedder
-	socketEmb, err := embedder.NewSocketEmbedder()
-	if err == nil {
-		emb = socketEmb
-	} else {
-		localEmb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
-		if err != nil {
-			return fmt.Errorf("failed to initialize embedder: %w", err)
-		}
-		emb = localEmb
+	// Initialize embedder
+	emb, err := initializeEmbedder(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 
 	// Initialize store
-	var st store.VectorStore
-	switch cfg.Store.Backend {
-	case "gob":
-		indexPath := config.GetIndexPath(projectRoot)
-		gobStore := store.NewGOBStore(indexPath)
-		if err := gobStore.Load(ctx); err != nil {
-			return fmt.Errorf("failed to load index: %w", err)
-		}
-		st = gobStore
-	case "postgres":
-		var err error
-		st, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, cfg.Embedder.Dimensions)
-		if err != nil {
-			return fmt.Errorf("failed to connect to postgres: %w", err)
-		}
-	case "qdrant":
-		collectionName := cfg.Store.Qdrant.Collection
-		if collectionName == "" {
-			collectionName = store.SanitizeCollectionName(projectRoot)
-		}
-		var err error
-		st, err = store.NewQdrantStore(ctx, cfg.Store.Qdrant.Endpoint, cfg.Store.Qdrant.Port, cfg.Store.Qdrant.UseTLS, collectionName, cfg.Store.Qdrant.APIKey, cfg.Embedder.Dimensions)
-		if err != nil {
-			return fmt.Errorf("failed to connect to qdrant: %w", err)
-		}
-	default:
-		return fmt.Errorf("unknown storage backend: %s", cfg.Store.Backend)
+	st, err := initializeStore(ctx, cfg, projectRoot)
+	if err != nil {
+		return err
 	}
 	defer st.Close()
 
@@ -243,33 +211,15 @@ func SearchJSON(projectRoot string, query string, limit int) ([]store.SearchResu
 		return nil, err
 	}
 
-	var emb embedder.Embedder
-	socketEmb, err := embedder.NewSocketEmbedder()
-	if err == nil {
-		emb = socketEmb
-	} else {
-		localEmb, err := embedder.NewE5Embedder(cfg.Embedder.ModelPath, config.GetVenvDir())
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize embedder: %w", err)
-		}
-		emb = localEmb
+	emb, err := initializeEmbedder(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 
-	var st store.VectorStore
-	switch cfg.Store.Backend {
-	case "gob":
-		gobStore := store.NewGOBStore(config.GetIndexPath(projectRoot))
-		if err := gobStore.Load(ctx); err != nil {
-			return nil, err
-		}
-		st = gobStore
-	case "postgres":
-		var err error
-		st, err = store.NewPostgresStore(ctx, cfg.Store.Postgres.DSN, projectRoot, cfg.Embedder.Dimensions)
-		if err != nil {
-			return nil, err
-		}
+	st, err := initializeStore(ctx, cfg, projectRoot)
+	if err != nil {
+		return nil, err
 	}
 	defer st.Close()
 
@@ -305,17 +255,11 @@ func runWorkspaceSearch(ctx context.Context, query string) error {
 		return err
 	}
 
-	// Initialize embedder — try daemon socket first
-	var emb embedder.Embedder
-	socketEmb, err := embedder.NewSocketEmbedder()
-	if err == nil {
-		emb = socketEmb
-	} else {
-		localEmb, err := embedder.NewE5Embedder(ws.Embedder.ModelPath, config.GetVenvDir())
-		if err != nil {
-			return fmt.Errorf("failed to initialize embedder: %w", err)
-		}
-		emb = localEmb
+	// Initialize embedder
+	embedderCfg := &config.Config{Embedder: ws.Embedder}
+	emb, err := initializeEmbedder(embedderCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize embedder: %w", err)
 	}
 	defer emb.Close()
 

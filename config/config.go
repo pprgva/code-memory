@@ -152,12 +152,8 @@ func DefaultConfig() *Config {
 		},
 		Trace: TraceConfig{
 			Mode: "fast",
-			EnabledLanguages: []string{
-				".go", ".js", ".ts", ".jsx", ".tsx", ".py", ".php",
-				".c", ".h", ".cpp", ".hpp", ".cc", ".cxx",
-				".rs", ".zig", ".cs", ".java",
-				".pas", ".dpr", // Pascal/Delphi
-			},
+			// EnabledLanguages: nil will use DefaultTracedExtensions() at runtime
+			EnabledLanguages: nil,
 			ExcludePatterns: []string{
 				"*_test.go",
 				"*.spec.ts",

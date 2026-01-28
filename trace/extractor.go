@@ -14,13 +14,21 @@ var vueScriptRe = regexp.MustCompile(`(?s)<script[^>]*>(.*?)</script>`)
 // extractVueScript retourne le contenu du bloc <script> et le numéro de ligne où il commence (0-based).
 // Si aucun bloc n'est trouvé, retourne ("", 0).
 func extractVueScript(content string) (scriptContent string, lineOffset int) {
-	loc := vueScriptRe.FindStringSubmatchIndex(content)
-	if loc == nil || len(loc) < 4 {
+	matches := vueScriptRe.FindAllStringSubmatchIndex(content, -1)
+	if len(matches) == 0 {
 		return "", 0
 	}
-	scriptStart := loc[2]
-	lineOffset = strings.Count(content[:scriptStart], "\n")
-	return content[loc[2]:loc[3]], lineOffset
+	// Use the first match's offset for line numbers
+	firstOffset := strings.Count(content[:matches[0][2]], "\n")
+
+	// Concatenate all script block contents
+	var parts []string
+	for _, loc := range matches {
+		if len(loc) >= 4 {
+			parts = append(parts, content[loc[2]:loc[3]])
+		}
+	}
+	return strings.Join(parts, "\n"), firstOffset
 }
 
 // RegexExtractor implements SymbolExtractor using regex patterns.
@@ -56,7 +64,7 @@ func (e *RegexExtractor) ExtractSymbols(ctx context.Context, filePath string, co
 	// Pour les fichiers .vue, extraire le bloc <script> et utiliser les patterns TypeScript
 	var patterns *LanguagePatterns
 	var lineOffset int
-	if ext == ".vue" {
+	if ext == ".vue" || ext == ".svelte" {
 		scriptContent, offset := extractVueScript(content)
 		if scriptContent == "" {
 			return nil, nil
@@ -117,6 +125,12 @@ func (e *RegexExtractor) extractMatches(re *regexp.Regexp, content string, fileP
 	for _, match := range matches {
 		if len(match) >= 4 {
 			name := content[match[2]:match[3]]
+
+			// Skip keywords
+			if IsKeyword(name, lang) {
+				continue
+			}
+
 			line := countLines(content[:match[0]]) + 1
 			sig := extractSignature(content, match[0], match[1])
 
@@ -156,7 +170,7 @@ func (e *RegexExtractor) extractMethodMatches(re *regexp.Regexp, content string,
 			}
 		}
 
-		if name != "" {
+		if name != "" && !IsKeyword(name, lang) {
 			line := countLines(content[:match[0]]) + 1
 			sig := extractSignature(content, match[0], match[1])
 
@@ -182,7 +196,7 @@ func (e *RegexExtractor) ExtractReferences(ctx context.Context, filePath string,
 	// Pour les fichiers .vue, extraire le bloc <script> et utiliser les patterns TypeScript
 	var patterns *LanguagePatterns
 	var lineOffset int
-	if ext == ".vue" {
+	if ext == ".vue" || ext == ".svelte" {
 		scriptContent, offset := extractVueScript(content)
 		if scriptContent == "" {
 			return nil, nil
@@ -344,7 +358,7 @@ func (e *RegexExtractor) buildFunctionBoundaries(content string, patterns *Langu
 // findFunctionEnd finds the end position of a function body.
 func findFunctionEnd(content string, start int, lang string) int {
 	switch lang {
-	case "go", "javascript", "typescript", "php", "c", "zig", "rust", "cpp":
+	case "go", "javascript", "typescript", "php", "c", "zig", "rust", "cpp", "java", "csharp", "pascal", "dart", "kotlin", "swift", "scala", "shell":
 		// Count braces to find function end
 		braceCount := 0
 		inString := false
@@ -398,6 +412,9 @@ func findFunctionEnd(content string, start int, lang string) int {
 				return pos
 			}
 		}
+	case "ruby", "lua":
+		// Ruby/Lua use end keyword - complex scoping, fallback to full content
+		return len(content)
 	}
 
 	return len(content)

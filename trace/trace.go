@@ -3,6 +3,7 @@ package trace
 
 import (
 	"context"
+	"sort"
 	"time"
 )
 
@@ -107,6 +108,17 @@ type SymbolStats struct {
 	TotalFiles      int       `json:"total_files"`
 	IndexSize       int64     `json:"index_size"`
 	LastUpdated     time.Time `json:"last_updated"`
+}
+
+// DefaultTracedExtensions returns the default file extensions for symbol extraction.
+// It derives the list from languagePatterns to maintain a single source of truth.
+func DefaultTracedExtensions() []string {
+	exts := make([]string, 0, len(languagePatterns))
+	for ext := range languagePatterns {
+		exts = append(exts, ext)
+	}
+	sort.Strings(exts) // for consistent ordering
+	return exts
 }
 
 // SymbolExtractor extracts symbols and references from source code.

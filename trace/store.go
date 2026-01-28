@@ -76,8 +76,8 @@ func (s *GOBSymbolStore) Load(ctx context.Context) error {
 
 // Persist writes the index to storage.
 func (s *GOBSymbolStore) Persist(ctx context.Context) error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	file, err := os.Create(s.indexPath)
 	if err != nil {
@@ -205,7 +205,17 @@ func (s *GOBSymbolStore) LookupCallers(ctx context.Context, symbolName string) (
 	if refs == nil {
 		return []Reference{}, nil
 	}
-	return refs, nil
+	// Deduplicate by file+line
+	seen := make(map[string]bool)
+	var deduped []Reference
+	for _, ref := range refs {
+		key := fmt.Sprintf("%s:%d", ref.File, ref.Line)
+		if !seen[key] {
+			seen[key] = true
+			deduped = append(deduped, ref)
+		}
+	}
+	return deduped, nil
 }
 
 // LookupCallees finds all symbols called by a function.
